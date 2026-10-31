@@ -1,11 +1,10 @@
 // Room tunes: a tiny local music player. Eight original synth loops played
-// with WebAudio — no files, no network, no account. Spotify cannot be played
-// from here without OAuth and a registered app, so the UI links out to
-// Spotify search instead of pretending to be connected.
+// with WebAudio — no files, no network, no account needed.
 
 export interface Track {
   id: string;
   title: string;
+  artist: string;
   mood: string;
   bpm: number;
   /** MIDI notes for one loop; 0 = rest. */
@@ -14,23 +13,31 @@ export interface Track {
 }
 
 export const TRACKS: Track[] = [
-  { id: 'morning', title: 'Morning Window', mood: 'calm · bright', bpm: 76, root: 48, notes: [72, 76, 79, 76, 74, 79, 81, 79, 72, 76, 79, 76, 74, 71, 74, 0] },
-  { id: 'desk', title: 'Desk Focus', mood: 'steady · lo-fi', bpm: 84, root: 45, notes: [69, 0, 72, 0, 76, 0, 72, 0, 67, 0, 71, 0, 74, 0, 71, 0] },
-  { id: 'rain', title: 'Rain on Glass', mood: 'soft · slow', bpm: 62, root: 50, notes: [74, 0, 0, 77, 0, 0, 76, 0, 74, 0, 0, 71, 0, 0, 0, 0] },
-  { id: 'sunroom', title: 'Sunroom', mood: 'warm · easy', bpm: 92, root: 53, notes: [77, 81, 84, 81, 79, 84, 86, 84, 77, 81, 84, 81, 79, 76, 79, 0] },
-  { id: 'evening', title: 'Evening Pack-Down', mood: 'mellow · dusk', bpm: 70, root: 43, notes: [67, 71, 74, 71, 72, 76, 79, 76, 67, 71, 74, 71, 69, 65, 69, 0] },
-  { id: 'shelf', title: 'Shelf Shuffle', mood: 'bouncy · tidy', bpm: 104, root: 47, notes: [71, 74, 78, 74, 71, 74, 78, 81, 79, 76, 79, 76, 74, 71, 74, 0] },
-  { id: 'night', title: 'Night Hallway', mood: 'quiet · deep', bpm: 58, root: 41, notes: [65, 0, 0, 0, 69, 0, 0, 0, 72, 0, 69, 0, 65, 0, 0, 0] },
-  { id: 'getaway', title: 'Out the Door', mood: 'upbeat · go', bpm: 112, root: 50, notes: [74, 78, 81, 78, 83, 81, 78, 74, 76, 79, 83, 79, 81, 79, 76, 0] },
+  { id: 'morning', title: 'Morning Window', artist: 'Ivory Keys', mood: 'calm · bright', bpm: 76, root: 48, notes: [72, 76, 79, 76, 74, 79, 81, 79, 72, 76, 79, 76, 74, 71, 74, 0] },
+  { id: 'desk', title: 'Desk Focus', artist: 'Pocket Loops', mood: 'steady · lo-fi', bpm: 84, root: 45, notes: [69, 0, 72, 0, 76, 0, 72, 0, 67, 0, 71, 0, 74, 0, 71, 0] },
+  { id: 'rain', title: 'Rain on Glass', artist: 'Roomtone', mood: 'soft · slow', bpm: 62, root: 50, notes: [74, 0, 0, 77, 0, 0, 76, 0, 74, 0, 0, 71, 0, 0, 0, 0] },
+  { id: 'sunroom', title: 'Sunroom', artist: 'Sage & Cedar', mood: 'warm · easy', bpm: 92, root: 53, notes: [77, 81, 84, 81, 79, 84, 86, 84, 77, 81, 84, 81, 79, 76, 79, 0] },
+  { id: 'evening', title: 'Evening Pack-Down', artist: 'Ivory Keys', mood: 'mellow · dusk', bpm: 70, root: 43, notes: [67, 71, 74, 71, 72, 76, 79, 76, 67, 71, 74, 71, 69, 65, 69, 0] },
+  { id: 'shelf', title: 'Shelf Shuffle', artist: 'The Shelf Club', mood: 'bouncy · tidy', bpm: 104, root: 47, notes: [71, 74, 78, 74, 71, 74, 78, 81, 79, 76, 79, 76, 74, 71, 74, 0] },
+  { id: 'night', title: 'Night Hallway', artist: 'Roomtone', mood: 'quiet · deep', bpm: 58, root: 41, notes: [65, 0, 0, 0, 69, 0, 0, 0, 72, 0, 69, 0, 65, 0, 0, 0] },
+  { id: 'getaway', title: 'Out the Door', artist: 'Doorway Band', mood: 'upbeat · go', bpm: 112, root: 50, notes: [74, 78, 81, 78, 83, 81, 78, 74, 76, 79, 83, 79, 81, 79, 76, 0] },
 ];
 
 const midi = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 type Listener = () => void;
 
+function loadFavorites(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem('pocketroom.fav-tracks') ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch { return []; }
+}
+
 class Player {
   index = 0;
   playing = false;
+  favorites = new Set<string>(loadFavorites());
   private ctx: AudioContext | null = null;
   private gain: GainNode | null = null;
   private timer: number | null = null;
@@ -79,6 +86,15 @@ class Player {
 
   next(): void { this.play((this.index + 1) % TRACKS.length); }
   prev(): void { this.play((this.index - 1 + TRACKS.length) % TRACKS.length); }
+
+  isFavorite(): boolean { return this.favorites.has(this.track.id); }
+
+  toggleFavorite(): void {
+    if (this.isFavorite()) this.favorites.delete(this.track.id);
+    else this.favorites.add(this.track.id);
+    try { localStorage.setItem('pocketroom.fav-tracks', JSON.stringify([...this.favorites])); } catch { /* private mode */ }
+    this.emit();
+  }
 
   private ensureCtx(): boolean {
     try {

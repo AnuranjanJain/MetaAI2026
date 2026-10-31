@@ -7,7 +7,7 @@ import { summarizeChecklist, todayKey } from './core/model.js';
 import { searchBelongings } from './core/inference.js';
 import { listenOnce, voiceInputSupported } from './voice.js';
 import { renderRoom, nextCommitment, POSTER_OPTIONS, WALL_OPTIONS, type Area } from './views/room.js';
-import { TRACKS, player } from './music.js';
+import { renderTaskDock, renderMusicPlayer } from './docks.js';
 import { renderDesk } from './views/areas/desk.js';
 import { renderDoorway } from './views/areas/doorway.js';
 import { renderWardrobe } from './views/areas/wardrobe.js';
@@ -37,6 +37,9 @@ const TITLES: Record<Area, string> = {
 export class Shell {
   private topbar = document.getElementById('topbar')!;
   private stage = document.getElementById('stage')!;
+  private taskDock = document.getElementById('task-dock');
+  private musicPlayer = document.getElementById('music-player');
+  private tasksOpen = true;
   private sheetRoot = document.getElementById('sheet-root')!;
   private toastRoot = document.getElementById('toast-root')!;
   private view: View = 'room';
@@ -52,7 +55,6 @@ export class Shell {
     };
     store.subscribe(() => this.render());
     store.onSaveState(() => this.renderTopbar());
-    player.onChange(() => this.updateMusicUi());
   }
 
   start(): void {
@@ -67,6 +69,24 @@ export class Shell {
     configureSound(store.state.sound);
     this.renderTopbar();
     this.renderStage();
+    this.renderTasks();
+    renderMusicPlayer(this.musicPlayer);
+  }
+
+  /** Bottom-left dock: today's open tasks, with a little show/hide button. */
+  private renderTasks(): void {
+    renderTaskDock(this.taskDock, store.state, {
+      open: this.tasksOpen,
+      onToggle: () => { this.tasksOpen = !this.tasksOpen; this.renderTasks(); },
+      onDone: (id) => {
+        store.update((d) => {
+          const t = d.tasks.find((x) => x.id === id);
+          if (t) { t.done = true; t.updatedAt = new Date().toISOString(); }
+        });
+        playMotif('done');
+        this.toast('Task done. Nice.');
+      },
+    });
   }
 
   // ---------- top bar ----------
@@ -103,47 +123,11 @@ export class Shell {
         <button class="btn soft small rail-wide" data-act="decor">🎨 Decorate wall</button>
         <span class="chip hide-late" title="${saveTitle}">${saveDot} ${store.saveState}</span>
         <p class="rail-note hide-late">Everything stays on this device.</p>
-        <div class="music-dock">
-          <div class="music-head"><span>🎵 Room tunes</span><a href="https://open.spotify.com/search/lofi%20beats" target="_blank" rel="noreferrer" title="Open Spotify search in your browser">Spotify ↗</a></div>
-          <div class="music-now" data-music-now></div>
-          <div class="progress music-progress"><span data-music-bar></span></div>
-          <div class="rail-icons music-controls">
-            <button class="icon-btn" data-music="prev" aria-label="Previous track" title="Previous track">⏮</button>
-            <button class="icon-btn on" data-music="toggle" data-music-toggle aria-label="Play or pause" title="Play / pause">▶</button>
-            <button class="icon-btn" data-music="next" aria-label="Next track" title="Next track">⏭</button>
-          </div>
-          <div class="music-list">${TRACKS.map((t, i) => `<button class="music-track" data-track="${i}"><span>${i + 1}. ${esc(t.title)}</span><small>${esc(t.mood)}</small></button>`).join('')}</div>
-          <p class="rail-note">Built-in synth tunes — no account needed. Spotify opens in your browser (real Spotify playback needs its own login).</p>
-        </div>
       </div>`;
     this.topbar.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((b) =>
       b.addEventListener('click', () => { this.view = b.dataset.view as View; this.render(); }));
     this.topbar.querySelectorAll<HTMLButtonElement>('[data-act]').forEach((b) =>
       b.addEventListener('click', () => this.action(b.dataset.act!)));
-    this.topbar.querySelectorAll<HTMLButtonElement>('[data-music]').forEach((b) =>
-      b.addEventListener('click', () => {
-        if (b.dataset.music === 'toggle') player.toggle();
-        else if (b.dataset.music === 'next') player.next();
-        else if (b.dataset.music === 'prev') player.prev();
-      }));
-    this.topbar.querySelectorAll<HTMLButtonElement>('[data-track]').forEach((b) =>
-      b.addEventListener('click', () => player.play(Number(b.dataset.track))));
-    this.updateMusicUi();
-  }
-
-  /** Refresh only the music dock DOM — playback lives in music.ts, so state
-      changes and re-renders never restart the audio. */
-  private updateMusicUi(): void {
-    const now = this.topbar.querySelector('[data-music-now]');
-    if (!now) return;
-    const t = player.track;
-    now.textContent = `${player.playing ? '▶ ' : ''}${t.title} · ${t.mood}`;
-    const toggle = this.topbar.querySelector('[data-music-toggle]');
-    if (toggle) toggle.textContent = player.playing ? '⏸' : '▶';
-    const bar = this.topbar.querySelector<HTMLElement>('[data-music-bar]');
-    if (bar) bar.style.width = `${Math.round(player.progress() * 100)}%`;
-    this.topbar.querySelectorAll('.music-track').forEach((el, i) =>
-      el.classList.toggle('active', i === player.index));
   }
 
   private action(act: string): void {

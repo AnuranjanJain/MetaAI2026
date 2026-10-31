@@ -49,7 +49,7 @@ body {
 .rail-icons { display: flex; gap: 8px; flex-wrap: wrap; }
 .rail-add { order: -1; }
 .rail-note { display: none; }
-.brand { font-family: var(--font-display); font-size: 22px; letter-spacing: 0.2px; white-space: nowrap; }
+.brand { font-family: var(--font-display); font-size: 22px; letter-spacing: 0.2px; white-space: nowrap; text-align: center; width: 100%; }
 .brand small { display: block; font-family: var(--font-ui); font-size: 11px; color: var(--sage); letter-spacing: 0.4px; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -62,7 +62,7 @@ body {
 .chip.terra { background: var(--terra); color: #fff; border-color: transparent; font-weight: 600; }
 button.chip { cursor: pointer; font: inherit; }
 @media (max-width: 560px) {
-  .brand { font-size: 19px; }
+  .brand { font-size: 19px; flex: 1 1 100%; }
   .brand small { display: none; }
   .btn { padding: 8px 14px; min-height: 40px; }
   .chip { font-size: 12px; padding: 5px 10px; max-width: 60vw; }
@@ -75,7 +75,7 @@ button.chip { cursor: pointer; font: inherit; }
   }
   .rail {
     display: flex; flex-direction: column; align-items: stretch; gap: 10px;
-    position: absolute; top: 18px; bottom: 18px; width: 220px;
+    position: absolute; top: 18px; width: 220px; max-height: 54dvh;
     pointer-events: auto; border-radius: 20px; padding: 16px;
     box-shadow: var(--shadow); overflow-y: auto; overscroll-behavior: contain;
   }
@@ -88,6 +88,9 @@ button.chip { cursor: pointer; font: inherit; }
   .rail-right .icon-btn.on { background: var(--butter); border-color: transparent; }
   .rail-add { order: 0; justify-content: center; width: 100%; }
   .rail-wide { justify-content: center; width: 100%; }
+  /* Search / sound / undo: one even row of equal, centred boxes. */
+  .rail .rail-icons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .rail .rail-icons .icon-btn { width: 100%; min-width: 0; }
   .rail-note { display: block; margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--sage); }
   .rail-right .rail-note { color: var(--ink-soft); }
 }
@@ -111,6 +114,7 @@ button.chip { cursor: pointer; font: inherit; }
   font: inherit; cursor: pointer; border-radius: 12px; min-width: 42px; min-height: 42px;
   background: rgba(251,247,236,0.12); color: var(--paper);
   border: 1px solid rgba(251,247,236,0.22); font-size: 17px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0;
 }
 .icon-btn.on { background: var(--butter); color: var(--ink); border-color: transparent; }
 .icon-btn[disabled] { opacity: 0.4; cursor: default; }
@@ -179,12 +183,16 @@ legend { font-size: 13px; font-weight: 700; color: var(--ink-soft); padding: 0 6
 .swatch { width: 52px; height: 52px; border-radius: 12px; border: 2px solid var(--line); cursor: pointer; padding: 0; }
 .swatch[aria-pressed="true"] { border-color: var(--terra); box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--terra); }
 
-.view-switch { display: inline-flex; background: rgba(251,247,236,0.12); border-radius: 999px; padding: 3px; border: 1px solid rgba(251,247,236,0.22); }
+/* Room / List: two-toned half-and-half boxes. */
+.view-switch { display: flex; width: 100%; background: transparent; border-radius: 12px; padding: 0; overflow: hidden; border: 1px solid rgba(251,247,236,0.22); }
 .view-switch button {
-  font: inherit; font-size: 13px; font-weight: 700; color: var(--paper);
-  background: transparent; border: 0; border-radius: 999px; padding: 7px 14px; cursor: pointer; min-height: 36px;
+  font: inherit; font-size: 13px; font-weight: 700;
+  flex: 1 1 50%; border: 0; border-radius: 0; padding: 8px 6px; cursor: pointer; min-height: 40px;
 }
-.view-switch button[aria-pressed="true"] { background: var(--paper); color: var(--ink); }
+.view-switch button[data-view="room"] { background: var(--sage-wash); color: var(--sage-deep); }
+.view-switch button[data-view="list"] { background: var(--butter-wash); color: #7a5c14; }
+.view-switch button[data-view="room"][aria-pressed="true"] { background: var(--sage-deep); color: var(--paper); }
+.view-switch button[data-view="list"][aria-pressed="true"] { background: var(--butter); color: var(--ink); }
 
 /* ---------- List view / cards ---------- */
 .section { margin-bottom: 18px; }
@@ -277,31 +285,94 @@ body.sheet-open { overflow: hidden; }
 }
 .mic-btn.listening { background: var(--terra); color: #fff; border-color: transparent; }
 
-/* ---------- Music dock (bottom of the right rail) ---------- */
-.music-dock { display: grid; gap: 8px; }
-.music-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 14px; }
-.music-head a { color: var(--sage-deep); font-size: 12.5px; font-weight: 700; text-decoration: none; white-space: nowrap; }
-.music-head a:hover { text-decoration: underline; }
-.music-now { font-size: 13px; font-weight: 600; min-height: 1.2em; }
-.music-progress { margin: 0; height: 8px; }
-.music-controls { justify-content: center; }
-.music-list { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; }
-.music-track {
-  font: inherit; font-size: 13px; text-align: left; cursor: pointer;
-  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
-  background: transparent; color: inherit;
-  border: 1px solid var(--line); border-radius: 9px; padding: 6px 9px;
+/* ---------- Bottom docks: tasks (left) + record player (right) ----------
+   Separate floating cards, detached from the top rails. */
+#task-dock { flex: none; margin: 0 14px 10px; }
+#music-player { flex: none; margin: 0 14px 12px; }
+.task-dock-card, .player-card {
+  background: var(--card); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 18px;
+  box-shadow: 0 16px 36px rgba(32, 48, 42, 0.18);
+  padding: 12px 14px;
 }
-.music-track small { color: var(--ink-soft); font-size: 11px; white-space: nowrap; }
-.music-track.active { background: var(--butter-wash); border-color: var(--butter); font-weight: 700; }
 @media (min-width: 1200px) {
-  .music-dock { margin-top: auto; border-top: 1px solid var(--line); padding-top: 12px; }
+  #task-dock { position: fixed; left: 18px; bottom: 18px; width: 220px; margin: 0; z-index: 28; }
+  #music-player { position: fixed; right: 18px; bottom: 18px; width: 220px; margin: 0; z-index: 28; }
+  .task-dock-card { max-height: 40dvh; overflow-y: auto; }
+  .player-card { max-height: 46dvh; overflow-y: auto; }
 }
-@media (max-width: 1199px) {
-  .music-dock { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-  .music-list, .music-progress { display: none; }
-  .music-now { font-size: 12.5px; }
+.dock-head { display: flex; align-items: center; gap: 8px; }
+.dock-head h2 { font-family: var(--font-display); font-size: 16px; margin: 0; flex: 1; }
+.dock-toggle {
+  font: inherit; cursor: pointer; flex: none;
+  width: 28px; height: 28px; border-radius: 8px; line-height: 1; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--sage-wash); color: var(--ink); border: 1px solid var(--line);
 }
+.dock-toggle svg { display: block; transition: transform 0.25s ease; }
+.dock-toggle.closed svg { transform: rotate(-90deg); }
+.task-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.task-list li { display: flex; align-items: center; gap: 8px; }
+.task-check {
+  font: inherit; cursor: pointer; flex: none;
+  width: 26px; height: 26px; border-radius: 50%; font-size: 13px; line-height: 1; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--sage-wash); color: var(--sage-deep); border: 1.5px solid var(--sage);
+}
+.task-check:hover { background: var(--sage-deep); color: var(--paper); }
+.task-text { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-text small { display: block; font-weight: 400; font-size: 11.5px; color: var(--ink-soft); }
+.dock-more, .dock-empty { font-size: 12.5px; color: var(--ink-soft); margin: 8px 0 0; }
+
+/* Record player: spinning vinyl + tonearm left, track info right,
+   progress below both, transport + favourite on the next line. */
+.player-top { display: flex; gap: 10px; align-items: center; }
+.vinyl-wrap { position: relative; width: 76px; height: 76px; flex: none; }
+.vinyl {
+  position: absolute; inset: 3px; border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--terra) 0 26%, transparent 27%),
+    repeating-radial-gradient(circle, #1c1c1e 0 2px, #2b2b2e 2px 4px);
+  box-shadow: 0 6px 14px rgba(32, 48, 42, 0.35), inset 0 0 0 2px rgba(251,247,236,0.08);
+  animation: spin 3.4s linear infinite;
+  animation-play-state: paused;
+}
+.vinyl::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px;
+  transform: translate(-50%, -50%); border-radius: 50%; background: var(--paper);
+}
+.player-card.playing .vinyl { animation-play-state: running; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tonearm {
+  position: absolute; left: 1px; top: 1px; width: 46px; height: 46px; z-index: 2;
+  transform-origin: 8px 8px; transform: rotate(-30deg);
+  transition: transform 0.6s ease;
+}
+.tonearm::before { /* pivot / reproducer base */
+  content: ""; position: absolute; left: 0; top: 0; width: 15px; height: 15px;
+  border-radius: 50%; background: var(--sage-deep); border: 2px solid var(--paper);
+  box-shadow: 0 2px 6px rgba(32,48,42,0.3);
+}
+.tonearm::after { /* arm rod */
+  content: ""; position: absolute; left: 8px; top: 7px; width: 37px; height: 3.5px;
+  border-radius: 999px; background: var(--ink);
+  transform: rotate(44deg); transform-origin: left center;
+}
+.tonearm-head { /* stylus cartridge at the needle end */
+  position: absolute; right: 1px; bottom: 2px; width: 9px; height: 13px;
+  border-radius: 3px; background: var(--terra); transform: rotate(44deg);
+}
+.player-card.playing .tonearm { transform: rotate(-6deg); } /* needle drops onto the record */
+.player-info { flex: 1; min-width: 0; }
+.player-kicker { font-size: 10.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--sage-deep); }
+.track-title { font-family: var(--font-display); font-size: 16px; font-weight: 700; line-height: 1.25; }
+.track-artist { font-size: 12.5px; color: var(--ink-soft); }
+.music-progress { margin: 10px 0 8px; height: 8px; }
+.player-controls { display: flex; justify-content: center; gap: 8px; }
+.player-controls .icon-btn { background: var(--sage-wash); color: var(--ink); border-color: var(--line); }
+.player-controls .icon-btn.on { background: var(--butter); border-color: transparent; }
+.fav-btn { color: var(--ink-soft) !important; }
+.fav-btn.fav-on { background: var(--terra) !important; color: #fff !important; border-color: transparent !important; }
 
 /* ---------- Late mode ---------- */
 body.late .room-hint, body.late .hide-late { display: none; }
