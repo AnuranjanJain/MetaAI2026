@@ -22,7 +22,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; height: 100%; }
 body {
   background: var(--ivory);
   color: var(--ink);
@@ -30,24 +30,27 @@ body {
   font-size: 16px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* app frame: the page itself never scrolls */
 }
 
-#app { min-height: 100dvh; display: flex; flex-direction: column; }
+#app { height: 100dvh; display: flex; flex-direction: column; }
 
-/* ---------- Top bar ---------- */
+/* ---------- Header: compact bar (small) / side rails (wide) ---------- */
 #topbar {
-  position: sticky; top: 0; z-index: 30;
+  flex: none; z-index: 30;
   background: var(--ink); color: var(--paper);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
   padding-top: calc(10px + env(safe-area-inset-top, 0px));
   padding-right: calc(14px + env(safe-area-inset-right, 0px));
   padding-bottom: 10px;
   padding-left: calc(14px + env(safe-area-inset-left, 0px));
 }
-.bar-row { display: flex; align-items: center; gap: 10px; max-width: 1100px; margin: 0 auto; flex-wrap: wrap; }
-.bar-row.chips-row { margin-top: 8px; }
+.rail { display: contents; }
+.rail-icons { display: flex; gap: 8px; flex-wrap: wrap; }
+.rail-add { order: -1; }
+.rail-note { display: none; }
 .brand { font-family: var(--font-display); font-size: 22px; letter-spacing: 0.2px; white-space: nowrap; }
 .brand small { display: block; font-family: var(--font-ui); font-size: 11px; color: var(--sage); letter-spacing: 0.4px; }
-.bar-spacer { flex: 1; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
   background: rgba(251, 247, 236, 0.12); color: var(--paper);
@@ -56,13 +59,37 @@ body {
   white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis;
 }
 .chip.warn { background: var(--butter); color: var(--ink); border-color: transparent; font-weight: 600; }
+.chip.terra { background: var(--terra); color: #fff; border-color: transparent; font-weight: 600; }
 button.chip { cursor: pointer; font: inherit; }
-.bar-actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
 @media (max-width: 560px) {
   .brand { font-size: 19px; }
   .brand small { display: none; }
   .btn { padding: 8px 14px; min-height: 40px; }
   .chip { font-size: 12px; padding: 5px 10px; max-width: 60vw; }
+}
+@media (min-width: 1200px) {
+  /* Header content moves into the empty ivory gutters beside the room. */
+  #topbar {
+    position: fixed; inset: 0; display: block;
+    background: transparent; pointer-events: none; padding: 0;
+  }
+  .rail {
+    display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+    position: absolute; top: 18px; bottom: 18px; width: 220px;
+    pointer-events: auto; border-radius: 20px; padding: 16px;
+    box-shadow: var(--shadow); overflow-y: auto; overscroll-behavior: contain;
+  }
+  .rail-left { left: 18px; background: var(--ink); color: var(--paper); }
+  .rail-right { right: 18px; background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+  .rail .chip { max-width: 100%; white-space: normal; }
+  .rail-right .chip { background: var(--sage-wash); color: var(--ink); border-color: var(--line); }
+  .rail-right .chip.warn { background: var(--butter); border-color: transparent; }
+  .rail-right .icon-btn { background: var(--sage-wash); color: var(--ink); border-color: var(--line); }
+  .rail-right .icon-btn.on { background: var(--butter); border-color: transparent; }
+  .rail-add { order: 0; justify-content: center; width: 100%; }
+  .rail-wide { justify-content: center; width: 100%; }
+  .rail-note { display: block; margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--sage); }
+  .rail-right .rail-note { color: var(--ink-soft); }
 }
 
 /* ---------- Buttons / inputs ---------- */
@@ -108,12 +135,22 @@ fieldset { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 1
 legend { font-size: 13px; font-weight: 700; color: var(--ink-soft); padding: 0 6px; }
 
 /* ---------- Stage / room ---------- */
-#stage { flex: 1; width: 100%; max-width: 1100px; margin: 0 auto; padding: 14px 14px 90px; }
+#stage {
+  flex: 1; min-height: 0; width: 100%; max-width: 1100px; margin: 0 auto;
+  padding: 14px 14px 16px; display: flex; flex-direction: column;
+  overflow-y: auto; overscroll-behavior: contain;
+}
 .room-card {
   background: var(--card); border: 1px solid var(--line); border-radius: 20px;
-  box-shadow: var(--shadow); overflow: hidden;
+  overflow: hidden; width: 100%;
+  flex: 1; min-height: 0; display: flex;
+  box-shadow: 0 24px 50px rgba(32, 48, 42, 0.22), 0 6px 14px rgba(32, 48, 42, 0.14);
 }
-.room-card svg { display: block; width: 100%; height: auto; }
+.room-card svg { display: block; width: 100%; height: 100%; flex: 1; min-height: 0; }
+@media (min-width: 1200px) {
+  #stage { max-width: none; padding: 18px 252px; }
+  body.late #stage { padding: 18px; }
+}
 .room-hint { padding: 10px 16px 14px; color: var(--ink-soft); font-size: 14px; }
 .room-hotspot { cursor: pointer; }
 .room-hotspot .halo { opacity: 0; transition: opacity 0.15s ease; }
@@ -123,7 +160,8 @@ legend { font-size: 13px; font-weight: 700; color: var(--ink-soft); padding: 0 6
   .room-hotspot:hover { filter: drop-shadow(0 4px 8px rgba(32, 48, 42, 0.25)); }
 }
 .room-badge { font-family: var(--font-ui); font-weight: 700; }
-.room-status { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 0; }
+.room-status { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 0; flex: none; }
+.room-hint { flex: none; }
 .status-pill {
   font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   display: inline-flex; align-items: center; gap: 6px;
@@ -238,6 +276,32 @@ body.sheet-open { overflow: hidden; }
   background: var(--sage-wash); color: var(--ink); border: 1.5px solid var(--line);
 }
 .mic-btn.listening { background: var(--terra); color: #fff; border-color: transparent; }
+
+/* ---------- Music dock (bottom of the right rail) ---------- */
+.music-dock { display: grid; gap: 8px; }
+.music-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 14px; }
+.music-head a { color: var(--sage-deep); font-size: 12.5px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.music-head a:hover { text-decoration: underline; }
+.music-now { font-size: 13px; font-weight: 600; min-height: 1.2em; }
+.music-progress { margin: 0; height: 8px; }
+.music-controls { justify-content: center; }
+.music-list { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; }
+.music-track {
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  background: transparent; color: inherit;
+  border: 1px solid var(--line); border-radius: 9px; padding: 6px 9px;
+}
+.music-track small { color: var(--ink-soft); font-size: 11px; white-space: nowrap; }
+.music-track.active { background: var(--butter-wash); border-color: var(--butter); font-weight: 700; }
+@media (min-width: 1200px) {
+  .music-dock { margin-top: auto; border-top: 1px solid var(--line); padding-top: 12px; }
+}
+@media (max-width: 1199px) {
+  .music-dock { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .music-list, .music-progress { display: none; }
+  .music-now { font-size: 12.5px; }
+}
 
 /* ---------- Late mode ---------- */
 body.late .room-hint, body.late .hide-late { display: none; }

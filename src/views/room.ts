@@ -1,7 +1,7 @@
 // Today's Room: a shallow layered SVG interior, laid out like a real room —
 // wardrobe left, desk centre under a shelf, window + door attached on the
 // right, stereo speakers mounted high, every base on the same floor line.
-// Status lives in a pill strip under the scene, never painted over furniture.
+// Status lives in the shell's side rails, never painted over furniture.
 
 import type { AppState, DecorPrefs } from '../core/types.js';
 import { summarizeChecklist, todayKey } from '../core/model.js';
@@ -31,6 +31,10 @@ export const POSTER_OPTIONS: { id: DecorPrefs['poster']; label: string }[] = [
 ];
 
 const BASE = 294; // shared ground line: every furniture foot lands here
+
+/** Paints the card behind the SVG with the same wall/floor colours so the
+    room appears to run the full height of the frame (see renderRoom). */
+const painters = new WeakMap<HTMLElement, ResizeObserver>();
 
 function hinge(x: number, y: number): string {
   return `<rect x="${x}" y="${y}" width="6" height="16" rx="2" fill="${INK}" opacity="0.75"/>`;
@@ -94,7 +98,6 @@ export function renderRoom(el: HTMLElement, state: AppState, onOpen: (a: Area) =
   const inbox = state.captures.filter((c) => c.status === 'inbox').length;
   const { packed, total } = summarizeChecklist(state.checklist);
   const remaining = total - packed;
-  const next = nextCommitment(state);
   const ready = total > 0 && remaining === 0;
   const decor: DecorPrefs = state.decor ?? { wall: 'ivory', poster: 'sunset' };
 
@@ -156,8 +159,24 @@ export function renderRoom(el: HTMLElement, state: AppState, onOpen: (a: Area) =
   el.innerHTML = `
   <div class="room-card">
     <svg viewBox="0 0 640 400" role="group" aria-label="Interactive room. Wardrobe left, desk and shelf centre, window and door right, stereo speakers above.">
+      <defs>
+        <linearGradient id="shL" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#20302a" stop-opacity="0.20"/><stop offset="1" stop-color="#20302a" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="shR" x1="1" y1="0" x2="0" y2="0">
+          <stop offset="0" stop-color="#20302a" stop-opacity="0.20"/><stop offset="1" stop-color="#20302a" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="shF" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#20302a" stop-opacity="0"/><stop offset="1" stop-color="#20302a" stop-opacity="0.14"/>
+        </linearGradient>
+      </defs>
       <rect x="0" y="0" width="640" height="284" fill="${WALLS[decor.wall]}"/>
       <polygon points="0,284 640,284 640,400 0,400" fill="${FLOOR}"/>
+      <polygon points="0,0 44,0 44,284 0,284" fill="url(#shL)"/>
+      <polygon points="640,0 596,0 596,284 640,284" fill="url(#shR)"/>
+      <rect x="0" y="284" width="640" height="116" fill="url(#shF)"/>
+      <line x1="70" y1="284" x2="30" y2="400" stroke="${INK}" stroke-width="2" opacity="0.07"/>
+      <line x1="570" y1="284" x2="610" y2="400" stroke="${INK}" stroke-width="2" opacity="0.07"/>
       <rect x="0" y="276" width="640" height="8" fill="${WOOD_D}" opacity="0.5"/>
       <ellipse cx="300" cy="354" rx="158" ry="24" fill="${TEAL}" opacity="0.5"/>
       <ellipse cx="300" cy="354" rx="118" ry="16" fill="none" stroke="${TEAL}" stroke-width="2" opacity="0.65"/>
@@ -175,15 +194,6 @@ export function renderRoom(el: HTMLElement, state: AppState, onOpen: (a: Area) =
       ${remaining > 0 ? dot(586, 104, TERRA) : ''}
       ${ready ? dot(586, 104, SAGE_D) : ''}
     </svg>
-    <div class="room-status" role="group" aria-label="Room status">
-      ${next ? `<button class="status-pill ink" data-open-area="timeline">↗ ${escapeXml(next)}</button>` : ''}
-      ${inbox > 0 ? `<button class="status-pill terra" data-open-area="desk">📝 ${inbox} new on desk</button>` : ''}
-      ${remaining > 0 ? `<button class="status-pill warn" data-open-area="doorway">🎒 ${remaining} to pack</button>` : ''}
-      ${ready ? `<span class="status-pill ready">✓ All packed — ready</span>` : ''}
-      ${!next && !inbox && !remaining && !ready ? `<span class="status-pill ready">✓ All clear today</span>` : ''}
-      <button class="status-pill decor" data-open-area="decor">🎨 Decorate wall</button>
-    </div>
-    <p class="room-hint">Tap the <strong>desk</strong> to capture, the <strong>window</strong> for your day, the <strong>doorway</strong> before leaving. Everything also works as lists.</p>
   </div>`;
 
   el.querySelectorAll<SVGGElement>('.room-hotspot').forEach((g) => {
@@ -196,10 +206,25 @@ export function renderRoom(el: HTMLElement, state: AppState, onOpen: (a: Area) =
       }
     });
   });
-  el.querySelectorAll<HTMLButtonElement>('[data-open-area]').forEach((b) =>
-    b.addEventListener('click', () => onOpen(b.dataset.openArea as Area)));
-}
 
-function escapeXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // The card is taller than the 640×400 scene on wide screens. The SVG is
+  // centred (meet), so extend the wall colour above the scene and the floor
+  // colour below it — the room then fills the frame top to bottom with no
+  // cropping and no distortion of the furniture or hotspots.
+  const card = el.querySelector<HTMLElement>('.room-card')!;
+  const svg = card.querySelector('svg')!;
+  const paint = () => {
+    const w = svg.clientWidth, h = svg.clientHeight;
+    if (!w || !h) return;
+    const scale = Math.min(w / 640, h / 400);
+    const wallBottom = (h - 400 * scale) / 2 + 284 * scale;
+    card.style.background = `linear-gradient(to bottom, ${WALLS[decor.wall]} 0 ${wallBottom}px, ${FLOOR} ${wallBottom}px 100%)`;
+  };
+  paint();
+  painters.get(el)?.disconnect();
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(paint);
+    ro.observe(svg);
+    painters.set(el, ro);
+  }
 }

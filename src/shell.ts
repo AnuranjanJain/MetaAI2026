@@ -7,6 +7,7 @@ import { summarizeChecklist, todayKey } from './core/model.js';
 import { searchBelongings } from './core/inference.js';
 import { listenOnce, voiceInputSupported } from './voice.js';
 import { renderRoom, nextCommitment, POSTER_OPTIONS, WALL_OPTIONS, type Area } from './views/room.js';
+import { TRACKS, player } from './music.js';
 import { renderDesk } from './views/areas/desk.js';
 import { renderDoorway } from './views/areas/doorway.js';
 import { renderWardrobe } from './views/areas/wardrobe.js';
@@ -51,6 +52,7 @@ export class Shell {
     };
     store.subscribe(() => this.render());
     store.onSaveState(() => this.renderTopbar());
+    player.onChange(() => this.updateMusicUi());
   }
 
   start(): void {
@@ -75,34 +77,79 @@ export class Shell {
     const saveDot = store.saveState === 'saved' ? '●' : store.saveState === 'saving' ? '◌' : '⚠';
     const saveTitle = store.saveState === 'saved' ? 'All changes saved' : store.saveState === 'saving' ? 'Saving…' : 'Could not save to this browser — working in memory';
     const doneToday = s.tasks.filter((t) => t.done && t.updatedAt.slice(0, 10) === todayKey()).length;
+    const inbox = s.captures.filter((c) => c.status === 'inbox').length;
+    const ready = total > 0 && packed >= total;
     this.topbar.innerHTML = `
-      <div class="bar-row">
+      <div class="rail rail-left">
         <div class="brand">Pocketroom<small>today, in one little place</small></div>
-        <div class="bar-actions">
-          <div class="view-switch" role="group" aria-label="View">
-            <button data-view="room" aria-pressed="${this.view === 'room'}">Room</button>
-            <button data-view="list" aria-pressed="${this.view === 'list'}">List</button>
-          </div>
+        <div class="view-switch" role="group" aria-label="View">
+          <button data-view="room" aria-pressed="${this.view === 'room'}">Room</button>
+          <button data-view="list" aria-pressed="${this.view === 'list'}">List</button>
+        </div>
+        ${next ? `<span class="chip" title="Next commitment">↗ ${esc(next)}</span>` : `<span class="chip">No more events today</span>`}
+        ${total > 0 ? `<button class="chip ${packed < total ? 'warn' : ''}" data-act="door">${packed}/${total} packed</button>` : ''}
+        ${inbox > 0 ? `<button class="chip terra" data-act="desk">📝 ${inbox} new on desk</button>` : ''}
+        ${ready ? `<span class="chip">✓ All packed — ready</span>` : ''}
+        <p class="rail-note hide-late">Your room, at a glance.<br/>Tap the desk to capture, the window for your day, the doorway before leaving — or use List.</p>
+      </div>
+      <div class="rail rail-right">
+        <button class="btn rail-add" data-act="add">+ Add</button>
+        <div class="rail-icons">
           <button class="icon-btn" data-act="search" aria-label="Search everything" title="Search">⌕</button>
           <button class="icon-btn ${s.sound.enabled && !s.sound.muted ? 'on' : ''}" data-act="sound" aria-label="Sound settings" title="Sound">♪</button>
           <button class="icon-btn" data-act="undo" aria-label="Undo last change" title="Undo" ${store.canUndo ? '' : 'disabled'}>↩</button>
-          <button class="btn" data-act="add">+ Add</button>
         </div>
-      </div>
-      <div class="bar-row chips-row">
-        ${next ? `<span class="chip" title="Next commitment">↗ ${esc(next)}</span>` : `<span class="chip">No more events today</span>`}
-        ${total > 0 ? `<button class="chip ${packed < total ? 'warn' : ''}" data-act="door">${packed}/${total} packed</button>` : ''}
         ${doneToday > 0 ? `<span class="chip" title="Tasks completed today">✓ ${doneToday} done today</span>` : ''}
+        <button class="btn soft small rail-wide" data-act="decor">🎨 Decorate wall</button>
         <span class="chip hide-late" title="${saveTitle}">${saveDot} ${store.saveState}</span>
+        <p class="rail-note hide-late">Everything stays on this device.</p>
+        <div class="music-dock">
+          <div class="music-head"><span>🎵 Room tunes</span><a href="https://open.spotify.com/search/lofi%20beats" target="_blank" rel="noreferrer" title="Open Spotify search in your browser">Spotify ↗</a></div>
+          <div class="music-now" data-music-now></div>
+          <div class="progress music-progress"><span data-music-bar></span></div>
+          <div class="rail-icons music-controls">
+            <button class="icon-btn" data-music="prev" aria-label="Previous track" title="Previous track">⏮</button>
+            <button class="icon-btn on" data-music="toggle" data-music-toggle aria-label="Play or pause" title="Play / pause">▶</button>
+            <button class="icon-btn" data-music="next" aria-label="Next track" title="Next track">⏭</button>
+          </div>
+          <div class="music-list">${TRACKS.map((t, i) => `<button class="music-track" data-track="${i}"><span>${i + 1}. ${esc(t.title)}</span><small>${esc(t.mood)}</small></button>`).join('')}</div>
+          <p class="rail-note">Built-in synth tunes — no account needed. Spotify opens in your browser (real Spotify playback needs its own login).</p>
+        </div>
       </div>`;
     this.topbar.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((b) =>
       b.addEventListener('click', () => { this.view = b.dataset.view as View; this.render(); }));
     this.topbar.querySelectorAll<HTMLButtonElement>('[data-act]').forEach((b) =>
       b.addEventListener('click', () => this.action(b.dataset.act!)));
+    this.topbar.querySelectorAll<HTMLButtonElement>('[data-music]').forEach((b) =>
+      b.addEventListener('click', () => {
+        if (b.dataset.music === 'toggle') player.toggle();
+        else if (b.dataset.music === 'next') player.next();
+        else if (b.dataset.music === 'prev') player.prev();
+      }));
+    this.topbar.querySelectorAll<HTMLButtonElement>('[data-track]').forEach((b) =>
+      b.addEventListener('click', () => player.play(Number(b.dataset.track))));
+    this.updateMusicUi();
+  }
+
+  /** Refresh only the music dock DOM — playback lives in music.ts, so state
+      changes and re-renders never restart the audio. */
+  private updateMusicUi(): void {
+    const now = this.topbar.querySelector('[data-music-now]');
+    if (!now) return;
+    const t = player.track;
+    now.textContent = `${player.playing ? '▶ ' : ''}${t.title} · ${t.mood}`;
+    const toggle = this.topbar.querySelector('[data-music-toggle]');
+    if (toggle) toggle.textContent = player.playing ? '⏸' : '▶';
+    const bar = this.topbar.querySelector<HTMLElement>('[data-music-bar]');
+    if (bar) bar.style.width = `${Math.round(player.progress() * 100)}%`;
+    this.topbar.querySelectorAll('.music-track').forEach((el, i) =>
+      el.classList.toggle('active', i === player.index));
   }
 
   private action(act: string): void {
     if (act === 'add') this.openAdd();
+    else if (act === 'desk') this.openSheet('desk');
+    else if (act === 'decor') this.openSheet('decor');
     else if (act === 'search') this.openSearch();
     else if (act === 'sound') this.openSheet('clatter');
     else if (act === 'door') this.openSheet('doorway');
