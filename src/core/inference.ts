@@ -126,6 +126,46 @@ function guessItemName(text: string): string {
   return firstSentence(text);
 }
 
+export type ProposalSlot = 'date' | 'time' | 'duration';
+
+/** Fields a voice follow-up can honestly ask for, derived from fields — never
+    from parsing the human-readable `missing` strings. */
+export function missingSlots(p: Proposal): ProposalSlot[] {
+  const slots: ProposalSlot[] = [];
+  if (p.type === 'event') {
+    if (!p.date) slots.push('date');
+    if (!p.time) slots.push('time');
+  }
+  if (p.type === 'task' && !p.durationMin) slots.push('duration');
+  return slots;
+}
+
+/** Merge one spoken slot answer into a proposal. Unparseable answers leave
+    the proposal untouched — the editable card remains the source of truth. */
+export function applySlotAnswer(p: Proposal, slot: ProposalSlot, answerText: string): Proposal {
+  const text = answerText.trim().slice(0, 200);
+  if (!text) return p;
+  const next: Proposal = { ...p, missing: [...p.missing] };
+  if (slot === 'date') {
+    const date = parseDate(text);
+    if (!date) return p;
+    next.date = date;
+    next.missing = next.missing.filter((m) => !/date/i.test(m));
+  } else if (slot === 'time') {
+    const time = parseTime(text);
+    if (!time) return p;
+    next.time = time;
+    next.missing = next.missing.filter((m) => !/time/i.test(m));
+  } else {
+    const durationMin = parseDuration(text);
+    if (!durationMin) return p;
+    next.durationMin = durationMin;
+    next.missing = next.missing.filter((m) => !/duration/i.test(m));
+  }
+  next.confidence = next.missing.length === 0 ? 'high' : next.missing.length <= 1 ? 'medium' : 'low';
+  return next;
+}
+
 /** Validate an edited proposal before it becomes a real record. */
 export function validateProposal(p: Proposal): string[] {
   const errors: string[] = [];
@@ -157,6 +197,25 @@ const OCCASION_TAGS: Record<string, string[]> = {
   evening: ['smart', 'evening'],
   weekend: ['casual', 'weekend'],
 };
+
+const EVENT_OCCASIONS: [RegExp, string][] = [
+  [/\b(gym|workout|run|running|yoga|training|swim|fitness)\b/i, 'gym'],
+  [/\b(lecture|class|lesson|exam|school|course|seminar|study)\b/i, 'class'],
+  [/\b(meeting|office|interview|work|presentation|client)\b/i, 'work'],
+  [/\b(dinner|date|party|evening|concert|theatre|theater)\b/i, 'evening'],
+];
+
+/**
+ * Map an event title to a wardrobe occasion ("Gym session" → gym).
+ * Returns undefined when nothing matches — the UI then asks instead
+ * of guessing. Keyword order matters: specific activities win.
+ */
+export function occasionFromEvent(title: string): string | undefined {
+  for (const [pattern, occasion] of EVENT_OCCASIONS) {
+    if (pattern.test(title)) return occasion;
+  }
+  return undefined;
+}
 
 /** Suggest combinations strictly from available catalog items. Never invents clothes. */
 export function suggestOutfits(catalog: Clothing[], occasion: string, max = 3): OutfitSuggestion[] {

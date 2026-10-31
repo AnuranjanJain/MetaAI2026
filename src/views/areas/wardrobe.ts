@@ -3,18 +3,27 @@
 
 import { store } from '../../store.js';
 import { createId, nowIso, todayKey } from '../../core/model.js';
-import { DEMO_LABEL, suggestOutfits } from '../../core/inference.js';
-import type { Clothing, ClothingState, Id } from '../../core/types.js';
+import { DEMO_LABEL, occasionFromEvent, suggestOutfits } from '../../core/inference.js';
+import { PHOTO_ITEM_CAP, PHOTO_LABEL, draftsToClothing, makeDraft, photoItemCount } from '../../core/wardrobeVision.js';
+import { readImageDataUrl, validateImageFile } from '../../image.js';
+import type { Clothing, ClothingState, DetectedClothing, Id } from '../../core/types.js';
 import { esc, type Ui } from '../../shell.js';
 
 let filter: ClothingState | 'all' = 'all';
 let occasion = 'class';
+// Wardrobe-photo scaffold: one shared photo + hand-tagged drafts, held
+// across re-renders until the user confirms or leaves them behind.
+let photoUrl: string | undefined;
+let photoDrafts: DetectedClothing[] = [];
 
 export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: boolean }): void {
   const s = store.state;
   const shown = s.clothing.filter((c) => filter === 'all' || c.state === filter);
   const avail = s.clothing.filter((c) => c.state === 'available');
   const suggestions = suggestOutfits(s.clothing, occasion);
+  const todayEvent = s.events
+    .filter((e) => e.date === todayKey() && occasionFromEvent(e.title))
+    .sort((a, b) => a.start.localeCompare(b.start))[0];
 
   body.innerHTML = `
     <p class="meta">Sample pieces are labeled as samples — suggestions always say how many items are truly yours.</p>
@@ -23,7 +32,7 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
         `<button class="btn ${filter === f ? 'plain' : 'soft'} small" data-filter="${f}">${f}</button>`).join('')}
     </div>
     ${shown.map((c) => `
-      <div class="card"><div class="row"><div class="grow">
+      <div class="card"><div class="row">${c.photoDataUrl ? `<img src="${c.photoDataUrl}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:8px" />` : ''}<div class="grow">
         <h3>${esc(c.name)} ${c.sample ? '<span class="pill butter">sample</span>' : ''}</h3>
         <div class="meta">${c.category}${c.color ? ' · ' + esc(c.color) : ''}${c.tags.length ? ' · ' + c.tags.map(esc).join(', ') : ''}</div>
       </div><select data-state="${c.id}" aria-label="State for ${esc(c.name)}">
@@ -40,8 +49,20 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
         <input type="text" id="wd-color" placeholder="Color" style="flex:1;min-width:100px" />
         <input type="text" id="wd-tags" placeholder="Tags: work, casual…" style="flex:2;min-width:140px" />
         <button class="btn soft small" id="wd-add">Add</button></div></div>
+    <div class="card"><h3>Add from photo</h3>
+      <div class="demo-note">${esc(PHOTO_LABEL)}</div>
+      <p><label class="field">Wardrobe photo<input type="file" id="wd-photo" accept="image/*" /></label></p>
+      ${photoUrl ? `<img src="${photoUrl}" alt="Your wardrobe photo" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px" />
+        ${photoDrafts.map((d, i) => draftRow(d, i)).join('')}
+        <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">
+          <button class="btn soft small" id="wd-draft-add">+ Add a piece</button>
+          <button class="btn plain small" id="wd-draft-save">Save confirmed pieces</button>
+        </div>` : '<p class="meta">Pick a photo of your wardrobe, then tag the pieces in it.</p>'}
+      <p class="meta">${photoItemCount(s.clothing)}/${PHOTO_ITEM_CAP} photo-backed pieces. The downscaled photo is attached to each piece you save and never leaves this device.</p>
+    </div>
     <div class="card"><h3>Suggest for an occasion</h3>
       <div class="demo-note">${DEMO_LABEL} for outfit ideas. Only available catalog items are used.</div>
+      ${todayEvent ? `<p class="meta">Today — from your events: <strong>${esc(occasionFromEvent(todayEvent.title)!)}</strong> (“${esc(todayEvent.title)}”) <button class="btn soft small" id="wd-today">Use this</button></p>` : ''}
       <div class="row"><select id="wd-occ" style="flex:1" aria-label="Occasion">
         ${['class', 'work', 'gym', 'evening', 'weekend'].map((o) => `<option ${o === occasion ? 'selected' : ''}>${o}</option>`).join('')}
       </select></div>
@@ -102,6 +123,50 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
     occasion = (e.target as HTMLSelectElement).value;
     renderWardrobe(body, ui, {});
   });
+  body.querySelector('#wd-today')?.addEventListener('click', () => {
+    const occ = todayEvent ? occasionFromEvent(todayEvent.title) : undefined;
+    if (occ) occasion = occ;
+    renderWardrobe(body, ui, {});
+  });
+  body.querySelector('#wd-photo')!.addEventListener('change', async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const bad = validateImageFile(file);
+    if (bad) { ui.toast(bad); return; }
+    try {
+      photoUrl = await readImageDataUrl(file, { maxDim: 480, quality: 0.72 });
+      photoDrafts = [makeDraft()];
+      renderWardrobe(body, ui, {});
+    } catch { ui.toast('Could not read that photo.'); }
+  });
+  body.querySelector('#wd-draft-add')?.addEventListener('click', () => {
+    syncDraftsFromDom(body);
+    photoDrafts.push(makeDraft());
+    renderWardrobe(body, ui, {});
+  });
+  body.querySelectorAll<HTMLButtonElement>('[data-draft-del]').forEach((b) =>
+    b.addEventListener('click', () => {
+      syncDraftsFromDom(body);
+      photoDrafts.splice(Number(b.dataset.draftDel), 1);
+      renderWardrobe(body, ui, {});
+    }));
+  body.querySelector('#wd-draft-save')?.addEventListener('click', () => {
+    syncDraftsFromDom(body);
+    const items = draftsToClothing(photoDrafts, photoUrl);
+    if (!items.length) { ui.toast('Name at least one piece and keep “Save this piece” ticked.'); return; }
+    const room = PHOTO_ITEM_CAP - photoItemCount(store.state.clothing);
+    if (items.length > room) {
+      ui.toast(`Photo pieces are capped at ${PHOTO_ITEM_CAP} to keep on-device storage light — only ${room} slot(s) left.`);
+      return;
+    }
+    store.update((d) => { d.clothing.push(...items); });
+    photoUrl = undefined;
+    photoDrafts = [];
+    ui.sound('wardrobe');
+    ui.toast(`Saved ${items.length} piece${items.length === 1 ? '' : 's'} from your photo.`,
+      { action: 'Undo', onAction: () => { store.undo(); renderWardrobe(body, ui, {}); } });
+    renderWardrobe(body, ui, {});
+  });
   body.querySelectorAll<HTMLButtonElement>('[data-keep]').forEach((b) =>
     b.addEventListener('click', () => {
       const sg = suggestions[Number(b.dataset.keep)];
@@ -145,6 +210,39 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
     }));
 
   void _opts;
+}
+
+function draftRow(d: DetectedClothing, i: number): string {
+  return `<div class="card" style="margin-top:8px">
+    <div class="row" style="flex-wrap:wrap;gap:8px">
+      <input type="text" data-df="name" data-di="${i}" value="${esc(d.name)}" placeholder="Piece name — e.g. Blue hoodie" style="flex:2;min-width:140px" aria-label="Piece name" />
+      <select data-df="category" data-di="${i}" style="flex:1;min-width:100px" aria-label="Category">
+        ${(['top', 'bottom', 'shoes', 'outer', 'other'] as const).map((c) =>
+          `<option value="${c}" ${c === d.category ? 'selected' : ''}>${c}</option>`).join('')}
+      </select></div>
+    <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">
+      <input type="text" data-df="color" data-di="${i}" value="${esc(d.color ?? '')}" placeholder="Color" style="flex:1;min-width:90px" aria-label="Color" />
+      <input type="text" data-df="tags" data-di="${i}" value="${esc(d.tags.join(', '))}" placeholder="Tags: casual, class…" style="flex:2;min-width:140px" aria-label="Tags" />
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label style="font-weight:400"><input type="checkbox" data-df="include" data-di="${i}" ${d.include ? 'checked' : ''} /> Save this piece</label>
+      <button class="btn danger small" data-draft-del="${i}">Remove</button>
+    </div></div>`;
+}
+
+/** Pull every draft input back into module state before a re-render or save. */
+function syncDraftsFromDom(body: HTMLElement): void {
+  body.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-df]').forEach((el) => {
+    const d = photoDrafts[Number(el.dataset.di)];
+    if (!d) return;
+    switch (el.dataset.df) {
+      case 'name': d.name = (el as HTMLInputElement).value; break;
+      case 'color': d.color = (el as HTMLInputElement).value || undefined; break;
+      case 'tags': d.tags = (el as HTMLInputElement).value.split(','); break;
+      case 'category': d.category = el.value as DetectedClothing['category']; break;
+      case 'include': d.include = (el as HTMLInputElement).checked; break;
+    }
+  });
 }
 
 export type { Id };

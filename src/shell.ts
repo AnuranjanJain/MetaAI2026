@@ -8,6 +8,7 @@ import { searchBelongings } from './core/inference.js';
 import { listenOnce, voiceInputSupported } from './voice.js';
 import { renderRoom, nextCommitment, POSTER_OPTIONS, WALL_OPTIONS, type Area } from './views/room.js';
 import { renderTaskDock, renderMusicPlayer } from './docks.js';
+import { openAssistant } from './views/assistant.js';
 import { renderDesk } from './views/areas/desk.js';
 import { renderDoorway } from './views/areas/doorway.js';
 import { renderWardrobe } from './views/areas/wardrobe.js';
@@ -120,6 +121,7 @@ export class Shell {
           <button class="icon-btn" data-act="undo" aria-label="Undo last change" title="Undo" ${store.canUndo ? '' : 'disabled'}>↩</button>
         </div>
         ${doneToday > 0 ? `<span class="chip" title="Tasks completed today">✓ ${doneToday} done today</span>` : ''}
+        ${voiceInputSupported() ? `<button class="btn soft small rail-wide" data-act="assistant">🎙️ Voice assistant</button>` : ''}
         <button class="btn soft small rail-wide" data-act="decor">🎨 Decorate wall</button>
         <span class="chip hide-late" title="${saveTitle}">${saveDot} ${store.saveState}</span>
         <p class="rail-note hide-late">Everything stays on this device.</p>
@@ -132,6 +134,7 @@ export class Shell {
 
   private action(act: string): void {
     if (act === 'add') this.openAdd();
+    else if (act === 'assistant') openAssistant(this.sheetRoot, this.ui);
     else if (act === 'desk') this.openSheet('desk');
     else if (act === 'decor') this.openSheet('decor');
     else if (act === 'search') this.openSearch();

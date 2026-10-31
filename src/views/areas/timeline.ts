@@ -4,13 +4,14 @@
 import { store } from '../../store.js';
 import { addDaysKey, buildChecklistForEvent, createId, nowIso, todayKey } from '../../core/model.js';
 import { DEMO_LABEL } from '../../core/inference.js';
-import { detectConflicts, freeWindows, proposeRevision, toMinutes, type Revision } from '../../core/schedule.js';
+import { detectConflicts, freeWindows, toMinutes } from '../../core/schedule.js';
+import { buildDayPlan, type DayPlan } from '../../core/planner.js';
 import type { CalEvent, Id, Task } from '../../core/types.js';
 import { esc, type Ui } from '../../shell.js';
 import { speak, voiceOutputSupported } from '../../voice.js';
 
 let day = todayKey();
-let pending: Revision | null = null;
+let pendingPlan: DayPlan | null = null;
 
 export function renderTimeline(body: HTMLElement, ui: Ui, opts: { focusAdd?: boolean }): void {
   const s = store.state;
@@ -36,14 +37,18 @@ export function renderTimeline(body: HTMLElement, ui: Ui, opts: { focusAdd?: boo
     <h3>Unscheduled <span class="pill ${unscheduled.length ? 'butter' : ''}">${unscheduled.length}</span></h3>
     ${unscheduled.length ? unscheduled.map((t) => taskRow(t, false)).join('') : `<p class="meta">Everything has a time. Calm.</p>`}
     ${windows.length ? `<h3>Open windows</h3><ul class="clean">${windows.map((w) => `<li class="meta">${toHM(w.start)} – ${toHM(w.end)} free</li>`).join('')}</ul>` : ''}
-    <div class="card"><h3>Reshape the day</h3>
+    <div class="card"><h3>Plan my day</h3>
       <div class="demo-note">${DEMO_LABEL} for schedule proposals. Fixed events never move; you review every change.</div>
       <div class="row">
         <label class="field">Not before<input type="time" id="rev-lo" value="08:00" /></label>
         <label class="field">Finish by<input type="time" id="rev-hi" value="22:00" /></label>
+        <label class="field">Leave buffer
+          <select id="plan-buffer"><option value="10">10 min</option><option value="15" selected>15 min</option><option value="30">30 min</option></select>
+        </label>
       </div>
-      <p><button class="btn soft small" id="rev-propose">Propose a revision</button></p>
-      <div id="rev-out">${pending ? '' : '<p class="meta">No proposal yet.</p>'}</div>
+      <p class="row" style="flex-wrap:wrap;gap:8px"><button class="btn soft small" id="plan-go">Plan my day</button>
+      <button class="btn soft small" id="plan-late">I'm late — replan from now</button></p>
+      <div id="rev-out">${pendingPlan ? '' : '<p class="meta">No plan yet.</p>'}</div>
     </div>
     <div class="card"><h3>Add to the day</h3>
       <div class="row" style="flex-wrap:wrap;gap:8px">
@@ -51,7 +56,7 @@ export function renderTimeline(body: HTMLElement, ui: Ui, opts: { focusAdd?: boo
         <button class="btn soft small" id="add-task">+ Flexible task</button>
       </div><div id="add-out" style="margin-top:8px"></div></div>`;
 
-  if (pending) paintRevision(body, ui);
+  if (pendingPlan) paintPlan(body, ui);
   wire(body, ui, events, scheduled, unscheduled, opts);
 }
 
@@ -99,7 +104,7 @@ function wire(body: HTMLElement, ui: Ui, events: CalEvent[], scheduled: Task[], 
     speak(`${label}. ${bits.join('. ')}.`);
   });
   body.querySelectorAll<HTMLButtonElement>('[data-day]').forEach((b) =>
-    b.addEventListener('click', () => { day = addDaysKey(day, Number(b.dataset.day)); pending = null; renderTimeline(body, ui, {}); }));
+    b.addEventListener('click', () => { day = addDaysKey(day, Number(b.dataset.day)); pendingPlan = null; renderTimeline(body, ui, {}); }));
   body.querySelectorAll<HTMLButtonElement>('[data-done]').forEach((b) =>
     b.addEventListener('click', () => {
       store.update((d) => {
@@ -159,11 +164,20 @@ function wire(body: HTMLElement, ui: Ui, events: CalEvent[], scheduled: Task[], 
       renderTimeline(body, ui, {});
     }));
 
-  body.querySelector('#rev-propose')!.addEventListener('click', () => {
+  body.querySelector('#plan-go')!.addEventListener('click', () => {
     const lo = body.querySelector<HTMLInputElement>('#rev-lo')!.value || '08:00';
     const hi = body.querySelector<HTMLInputElement>('#rev-hi')!.value || '22:00';
-    pending = proposeRevision(store.state.events, store.state.tasks, day, { earliest: lo, latest: hi });
-    paintRevision(body, ui);
+    const buffer = Number(body.querySelector<HTMLSelectElement>('#plan-buffer')!.value || 15);
+    pendingPlan = buildDayPlan(store.state, day, { earliest: lo, latest: hi, leaveBufferMin: buffer });
+    paintPlan(body, ui);
+  });
+  body.querySelector('#plan-late')!.addEventListener('click', () => {
+    const hi = body.querySelector<HTMLInputElement>('#rev-hi')!.value || '22:00';
+    const buffer = Number(body.querySelector<HTMLSelectElement>('#plan-buffer')!.value || 15);
+    const now = new Date();
+    const fromMin = day === todayKey() ? now.getHours() * 60 + now.getMinutes() : undefined;
+    pendingPlan = buildDayPlan(store.state, day, { fromMin, latest: hi, leaveBufferMin: buffer });
+    paintPlan(body, ui);
   });
 
   body.querySelector('#add-event')!.addEventListener('click', () => {
@@ -204,35 +218,47 @@ function wire(body: HTMLElement, ui: Ui, events: CalEvent[], scheduled: Task[], 
   void opts;
 }
 
-function paintRevision(body: HTMLElement, ui: Ui): void {
+const STEP_ICON: Record<string, string> = {
+  event: '📌', task: '🧩', prep: '🎒', leaveby: '🚶',
+};
+
+function paintPlan(body: HTMLElement, ui: Ui): void {
   const host = body.querySelector('#rev-out')!;
-  if (!pending) return;
+  const plan = pendingPlan;
+  if (!plan) return;
   const st = store.state;
   const name = (id: Id) => st.tasks.find((t) => t.id === id)?.title ?? id;
   host.innerHTML = `
     <div class="card" style="border-color:var(--sage-deep)">
-      <h3>Review — nothing applied yet</h3>
-      ${pending.placements.length ? `<ul class="clean">${pending.placements.map((p) =>
-        `<li>📌 <strong>${esc(name(p.taskId))}</strong> → ${p.start}–${p.end}</li>`).join('')}</ul>` : '<p class="meta">No placements.</p>'}
-      ${pending.conflicts.length ? `<p class="missing">${pending.conflicts.map(esc).join('<br/>')}</p>` : '<p class="meta">Everything fits. Fixed events untouched.</p>'}
-      <div class="row"><button class="btn plain small" id="rev-apply">Apply revision</button>
-      <button class="btn soft small" id="rev-drop">Discard</button></div>
+      <h3>Your plan — nothing applied yet</h3>
+      ${plan.steps.length ? `<ul class="clean">${plan.steps.map((s2) => `<li${s2.past ? ' style="opacity:.55"' : ''}>
+        ${STEP_ICON[s2.kind] ?? '•'} <strong>${toHM(s2.startMin)}${s2.endMin !== undefined && s2.endMin !== s2.startMin ? '–' + toHM(s2.endMin) : ''}</strong>
+        ${esc(s2.title)}${s2.past ? ' <span class="meta">(past)</span>' : ''}${s2.detail ? `<br/><span class="meta">${esc(s2.detail)}</span>` : ''}</li>`).join('')}</ul>`
+        : '<p class="meta">Nothing to plan on this day.</p>'}
+      ${plan.deferred.length ? `<p class="meta">Deferred (no room left): ${plan.deferred.map((id) => esc(name(id))).join(', ')}</p>` : ''}
+      ${plan.warnings.map((w) => `<p class="missing">${esc(w)}</p>`).join('')}
+      ${plan.conflicts.length ? `<p class="missing">${plan.conflicts.map(esc).join('<br/>')}</p>` : '<p class="meta">No conflicts. Fixed events untouched.</p>'}
+      <div class="row" style="flex-wrap:wrap;gap:8px">
+        <button class="btn plain small" id="plan-accept" ${plan.placements.length ? '' : 'disabled'}>Accept plan</button>
+        <button class="btn soft small" id="plan-drop">Discard</button>
+      </div>
+      ${plan.placements.length ? '' : '<p class="meta">Nothing new to place — the plan above is already how the day looks.</p>'}
     </div>`;
-  host.querySelector('#rev-apply')!.addEventListener('click', () => {
-    const rev = pending!;
+  host.querySelector('#plan-accept')!.addEventListener('click', () => {
+    const accepted = pendingPlan!;
     store.update((d) => {
-      for (const p of rev.placements) {
+      for (const p of accepted.placements) {
         const t = d.tasks.find((x) => x.id === p.taskId);
         if (t) { t.start = `${day}T${p.start}:00`; t.updatedAt = nowIso(); }
       }
     });
-    pending = null;
+    pendingPlan = null;
     ui.sound('done');
-    ui.toast('Revision applied.');
+    ui.toast('Plan accepted — placements saved.', { action: 'Undo', onAction: () => { store.undo(); renderTimeline(body, ui, {}); } });
     renderTimeline(body, ui, {});
   });
-  host.querySelector('#rev-drop')!.addEventListener('click', () => {
-    pending = null;
+  host.querySelector('#plan-drop')!.addEventListener('click', () => {
+    pendingPlan = null;
     renderTimeline(body, ui, {});
   });
 }

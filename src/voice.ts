@@ -89,6 +89,27 @@ export function speak(text: string): void {
   } catch { /* audio unavailable — stay silent */ }
 }
 
+/** Speak and resolve when speech finishes (or after a safe timeout), so a
+    follow-up listen does not start while the prompt is still playing. */
+export function speakAndWait(text: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (!voiceOutputSupported()) { resolve(); return; }
+    const clean = text.trim().slice(0, 500);
+    if (!clean) { resolve(); return; }
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(); } };
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(clean);
+      u.rate = 1;
+      u.onend = done;
+      u.onerror = done;
+      window.setTimeout(done, Math.min(6000, 1200 + clean.length * 70));
+      window.speechSynthesis.speak(u);
+    } catch { done(); }
+  });
+}
+
 export function stopSpeak(): void {
   try { window.speechSynthesis?.cancel(); } catch { /* noop */ }
 }

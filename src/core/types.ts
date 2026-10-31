@@ -98,9 +98,25 @@ export interface Clothing {
   color?: string;
   tags: string[];
   state: ClothingState;
+  /** Shared downscaled wardrobe photo this piece was added from, if any. */
+  photoDataUrl?: string;
   /** True for built-in explorable items the user does not own. */
   sample?: boolean;
   createdAt: string;
+}
+
+/**
+ * A reviewable clothing draft from a wardrobe photo — filled in by hand on
+ * device today, or by a cloud model in Phase 4. Never saved directly;
+ * only confirmed drafts become Clothing records.
+ */
+export interface DetectedClothing {
+  id: Id;
+  name: string;
+  category: Clothing['category'];
+  color?: string;
+  tags: string[];
+  include: boolean;
 }
 
 export interface Outfit {

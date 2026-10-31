@@ -6,6 +6,7 @@ import { store } from '../../store.js';
 import { applyProposal, createId, nowIso } from '../../core/model.js';
 import { DEMO_LABEL, propose, validateProposal } from '../../core/inference.js';
 import { listenOnce, voiceInputSupported } from '../../voice.js';
+import { readImageDataUrl, validateImageFile } from '../../image.js';
 import type { Capture, Id, Proposal } from '../../core/types.js';
 import { esc, type Ui } from '../../shell.js';
 
@@ -47,17 +48,13 @@ export function renderDesk(body: HTMLElement, ui: Ui, opts: { focusAdd?: boolean
       ui.toast('Write a note or attach an image first.');
       return;
     }
-    if (file && !file.type.startsWith('image/')) {
-      ui.toast('That file is not an image.');
-      return;
-    }
-    if (file && file.size > 8 * 1024 * 1024) {
-      ui.toast('That image is too large (over 8 MB).');
-      return;
+    if (file) {
+      const bad = validateImageFile(file);
+      if (bad) { ui.toast(bad); return; }
     }
     let imageDataUrl: string | undefined;
     if (file) {
-      try { imageDataUrl = await readImage(file); }
+      try { imageDataUrl = await readImageDataUrl(file, { maxDim: 800, quality: 0.72 }); }
       catch { ui.toast('Could not read that image.'); return; }
     }
     const capture: Capture = {
@@ -98,15 +95,23 @@ export function renderDesk(body: HTMLElement, ui: Ui, opts: { focusAdd?: boolean
     }));
 }
 
-function showProposal(body: HTMLElement, ui: Ui, captureId: Id): void {
+export interface ShowProposalOpts {
+  proposal?: Proposal;
+  label?: string;
+  /** Called instead of re-rendering the desk (assistant / live paths). */
+  onFinished?: (p: Proposal, outcome: 'confirmed' | 'archived') => void;
+}
+
+export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: ShowProposalOpts = {}): void {
   const c = store.state.captures.find((x) => x.id === captureId);
   const host = body.querySelector('#proposal')!;
   if (!c) return;
-  const p = propose(c.text, c.kind === 'image');
+  const p = opts.proposal ?? propose(c.text, c.kind === 'image');
+  const label = opts.label ?? DEMO_LABEL;
   host.innerHTML = `
     <div class="card" style="border-color:var(--terra)">
       <h3>Confirm before creating <span class="pill terra">${p.confidence} confidence</span></h3>
-      <div class="demo-note">${DEMO_LABEL}. Check every field — the source is quoted below.</div>
+      <div class="demo-note">${esc(label)}. Check every field — the source is quoted below.</div>
       <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
         ${(['task', 'event', 'item', 'reference'] as const).map((t) =>
           `<button class="btn ${p.type === t ? 'plain' : 'soft'} small" data-type="${t}">${t}</button>`).join('')}
@@ -138,7 +143,8 @@ function showProposal(body: HTMLElement, ui: Ui, captureId: Id): void {
       if (cap) { cap.status = 'archived'; cap.proposal = p; }
     });
     ui.toast('Archived. The source stays on the desk.');
-    renderDesk(body, ui, {});
+    if (opts.onFinished) opts.onFinished(p, 'archived');
+    else renderDesk(body, ui, {});
   });
   host.querySelector('#p-confirm')!.addEventListener('click', () => {
     readFields(fields, p);
@@ -160,7 +166,8 @@ function showProposal(body: HTMLElement, ui: Ui, captureId: Id): void {
     ui.sound('done');
     const where = event ? 'timeline' : task ? 'timeline (unscheduled)' : belonging ? 'drawers & shelves' : 'references';
     ui.toast(`Created. Find it in ${where}.`, event ? { action: 'Open day', onAction: () => ui.open('timeline') } : undefined);
-    renderDesk(body, ui, {});
+    if (opts.onFinished) opts.onFinished(p, 'confirmed');
+    else renderDesk(body, ui, {});
   });
   host.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -203,25 +210,4 @@ function readFields(host: Element, p: Proposal): void {
     p.itemName = get('itemName') || p.title;
     p.prep = get('prep') || undefined;
   }
-}
-
-/** Downscale uploads so local persistence stays light. Rejects on failure. */
-function readImage(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const scale = Math.min(1, 800 / Math.max(img.width, img.height));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(img.width * scale));
-        canvas.height = Math.max(1, Math.round(img.height * scale));
-        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL('image/jpeg', 0.72));
-      } catch (e) { reject(e); }
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image.')); };
-    img.src = url;
-  });
 }
