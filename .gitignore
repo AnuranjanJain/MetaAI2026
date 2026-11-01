@@ -3,3 +3,6 @@ dist/
 .npm-cache/
 .tmp/
 *.local
+
+.vercel
+.env*
