@@ -3,6 +3,7 @@
 
 import { store } from './store.js';
 import { playMotif, playSoundtrack, configureSound } from './audio.js';
+import { player } from './music.js';
 import { summarizeChecklist, todayKey } from './core/model.js';
 import { searchBelongings } from './core/inference.js';
 import { listenOnce, voiceInputSupported } from './voice.js';
@@ -150,10 +151,22 @@ export class Shell {
   private renderStage(): void {
     if (this.late) return this.renderLate();
     if (this.view === 'room') {
-      renderRoom(this.stage, store.state, (area) => this.openSheet(area));
+      // The wall speakers drive the same player the dock card shows, so the
+      // two can never disagree. Sound settings stay behind the ♪ button.
+      renderRoom(this.stage, store.state, (area) => {
+        if (area === 'clatter') this.toggleRoomMusic();
+        else this.openSheet(area);
+      });
     } else {
       this.renderList(this.stage, store.state);
     }
+  }
+
+  /** One tap on either speaker: play/pause the shared queue. */
+  private toggleRoomMusic(): void {
+    player.toggle();
+    if (player.playing) this.toast(`Playing ${esc(player.track.title)} — controls bottom-right.`);
+    else this.toast('Music paused.');
   }
 
   private renderList(el: HTMLElement, s: AppState): void {
@@ -415,7 +428,7 @@ export class Shell {
         const act = b.dataset.snd!;
         if (act === 'toggle') store.update((d) => { d.sound.enabled = !d.sound.enabled; }, { undo: false });
         else if (act === 'mute') store.update((d) => { d.sound.muted = !d.sound.muted; }, { undo: false });
-        else if (act === 'play') playSoundtrack(areas);
+        else if (act === 'play') { player.pause(); playSoundtrack(areas); }
         this.openSheet('clatter');
       }));
     body.querySelectorAll<HTMLButtonElement>('[data-motif]').forEach((b) =>

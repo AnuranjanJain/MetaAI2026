@@ -182,8 +182,8 @@ export function renderRoom(el: HTMLElement, state: AppState, onOpen: (a: Area) =
       <ellipse cx="300" cy="354" rx="118" ry="16" fill="none" stroke="${TEAL}" stroke-width="2" opacity="0.65"/>
       <polygon points="502,290 600,290 608,308 494,308" fill="#3d6e7d"/>
       ${plantArt}
-      ${hotspot('clatter', 'Left stereo speaker — optional sounds', 12, 6, 52, 68, speakerArt(18))}
-      ${hotspot('clatter', 'Right stereo speaker — optional sounds', 570, 6, 52, 68, speakerArt(576))}
+      ${hotspot('clatter', 'Left speaker — play or pause the music', 12, 6, 52, 68, speakerArt(18))}
+      ${hotspot('clatter', 'Right speaker — play or pause the music', 570, 6, 52, 68, speakerArt(576))}
       ${decor.poster !== 'none' ? hotspot('decor', 'Wall poster — customize the wall', 218, 20, 128, 68, posterArt(decor)) : ''}
       ${hotspot('wardrobe', 'Wardrobe — clothes and outfits', 24, 102, 140, 192, wardrobeArt)}
       ${hotspot('storage', 'Shelves — find stored items', 190, 88, 184, 82, shelfArt)}

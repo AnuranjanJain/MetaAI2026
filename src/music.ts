@@ -1,5 +1,7 @@
 // Room tunes: a tiny local music player. Eight original synth loops played
-// with WebAudio — no files, no network, no account needed.
+// with WebAudio — no files, no network, no account needed — plus the user's
+// own uploaded audio files, persisted in IndexedDB and played through the
+// same queue, so the room speakers and the dock card never disagree.
 
 export interface Track {
   id: string;
@@ -34,10 +36,76 @@ function loadFavorites(): string[] {
   } catch { return []; }
 }
 
+/** A user-uploaded file, kept as an object URL for this session. */
+export interface CustomTrack {
+  id: string;
+  title: string;
+  url: string;
+}
+
+/** One playable entry, builtin or uploaded — what the UI renders. */
+export interface QueueItem {
+  key: string;
+  title: string;
+  artist: string;
+  mood: string;
+  custom: boolean;
+}
+
+/** IndexedDB keeps upload blobs across reloads (localStorage is too small
+    for audio). Every helper resolves null/offline instead of throwing. */
+function openDb(): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
+    try {
+      if (typeof indexedDB === 'undefined') { resolve(null); return; }
+      const req = indexedDB.open('pocketroom', 1);
+      req.onupgradeneeded = () => { req.result.createObjectStore('uploads', { keyPath: 'id' }); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch { resolve(null); }
+  });
+}
+
+interface StoredUpload { id: string; title: string; blob: Blob }
+
+async function readAllUploads(db: IDBDatabase): Promise<StoredUpload[]> {
+  return new Promise((resolve, reject) => {
+    try {
+      const rq = db.transaction('uploads', 'readonly').objectStore('uploads').getAll();
+      rq.onsuccess = () => resolve((rq.result ?? []) as StoredUpload[]);
+      rq.onerror = () => reject(rq.error);
+    } catch (e) { reject(e); }
+  });
+}
+
+async function putUpload(db: IDBDatabase, row: StoredUpload): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const rq = db.transaction('uploads', 'readwrite').objectStore('uploads').put(row);
+      rq.onsuccess = () => resolve();
+      rq.onerror = () => reject(rq.error);
+    } catch (e) { reject(e); }
+  });
+}
+
+async function deleteUpload(db: IDBDatabase, id: string): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const rq = db.transaction('uploads', 'readwrite').objectStore('uploads').delete(id);
+      rq.onsuccess = () => resolve();
+      rq.onerror = () => resolve();
+    } catch { resolve(); }
+  });
+}
+
 class Player {
   index = 0;
   playing = false;
   favorites = new Set<string>(loadFavorites());
+  /** Uploaded tracks, newest last. Always queued ahead of the builtins. */
+  custom: CustomTrack[] = [];
+  /** Transient UI note (upload rejected, file unplayable…). Cleared on play. */
+  notice = '';
   private ctx: AudioContext | null = null;
   private gain: GainNode | null = null;
   private timer: number | null = null;
@@ -45,53 +113,95 @@ class Player {
   private step = 0;
   private cycleStart = 0;
   private nextAt = 0;
+  private audio: HTMLAudioElement | null = null;
+  private audioKey: string | null = null;
   private listeners = new Set<Listener>();
 
-  get track(): Track { return TRACKS[this.index]; }
+  /** Uploads first (newest last), then the builtin loops. */
+  get queue(): QueueItem[] {
+    const mine = this.custom.map((c) => ({
+      key: c.id, title: c.title, artist: 'My upload', mood: 'your music', custom: true,
+    }));
+    const built = TRACKS.map((t) => ({
+      key: t.id, title: t.title, artist: t.artist, mood: t.mood, custom: false,
+    }));
+    return [...mine, ...built];
+  }
+
+  get track(): QueueItem {
+    const q = this.queue;
+    return q[Math.max(0, Math.min(this.index, q.length - 1))]
+      ?? { key: 'none', title: 'No music', artist: '', mood: '', custom: false };
+  }
+
+  isCustom(): boolean { return this.track.custom; }
+
+  private clampIndex(): void {
+    this.index = Math.max(0, Math.min(this.index, this.queue.length - 1));
+  }
+
+  /** The builtin loop for the current queue position, if it is one. */
+  private builtin(): Track | null {
+    const item = this.queue[this.index];
+    if (!item || item.custom) return null;
+    return TRACKS.find((t) => t.id === item.key) ?? null;
+  }
 
   onChange(fn: Listener): void { this.listeners.add(fn); }
   private emit(): void { this.listeners.forEach((fn) => fn()); }
 
-  /** 0..1 progress through the current loop. */
+  /** 0..1 progress through the current loop (synth) or file (upload). */
   progress(): number {
-    const t = this.track;
+    if (this.isCustom()) {
+      const a = this.audio;
+      if (!a || !a.duration || !isFinite(a.duration) || a.duration <= 0) return 0;
+      return Math.max(0, Math.min(1, a.currentTime / a.duration));
+    }
+    const t = this.builtin();
+    if (!t || !this.ctx || !this.playing) return 0;
     const loopSec = t.notes.length * (60 / t.bpm / 2);
-    if (!this.ctx || !this.playing) return 0;
     const elapsed = (this.ctx.currentTime - this.cycleStart) % loopSec;
     return Math.max(0, Math.min(1, elapsed / loopSec));
   }
 
   play(i?: number): void {
-    if (!this.ensureCtx()) return;
     if (i !== undefined && i !== this.index) {
       this.index = i;
       this.step = 0;
     }
-    void this.ctx!.resume();
-    this.playing = true;
-    this.cycleStart = this.ctx!.currentTime;
-    this.nextAt = this.ctx!.currentTime + 0.06;
-    this.startScheduler();
-    this.emit();
+    this.clampIndex();
+    this.notice = '';
+    const item = this.queue[this.index];
+    if (!item) { this.playing = false; this.emit(); return; }
+    if (item.custom) this.playCustom(item.key);
+    else this.playBuiltin();
   }
 
   pause(): void {
     this.playing = false;
     this.stopScheduler();
-    void this.ctx?.suspend();
+    try { this.audio?.pause(); } catch { /* already stopped */ }
+    try { void this.ctx?.suspend(); } catch { /* no synth running */ }
     this.emit();
   }
 
   toggle(): void { this.playing ? this.pause() : this.play(); }
 
-  next(): void { this.play((this.index + 1) % TRACKS.length); }
-  prev(): void { this.play((this.index - 1 + TRACKS.length) % TRACKS.length); }
+  next(): void {
+    const q = this.queue.length;
+    if (q) this.play((this.index + 1) % q);
+  }
 
-  isFavorite(): boolean { return this.favorites.has(this.track.id); }
+  prev(): void {
+    const q = this.queue.length;
+    if (q) this.play((this.index - 1 + q) % q);
+  }
+
+  isFavorite(): boolean { return this.favorites.has(this.track.key); }
 
   toggleFavorite(): void {
-    if (this.isFavorite()) this.favorites.delete(this.track.id);
-    else this.favorites.add(this.track.id);
+    if (this.isFavorite()) this.favorites.delete(this.track.key);
+    else this.favorites.add(this.track.key);
     try { localStorage.setItem('pocketroom.fav-tracks', JSON.stringify([...this.favorites])); } catch { /* private mode */ }
     this.emit();
   }
@@ -108,11 +218,152 @@ class Player {
     } catch { return false; }
   }
 
+  private playBuiltin(): void {
+    const t = this.builtin();
+    if (!t || !this.ensureCtx()) { this.playing = false; this.emit(); return; }
+    try { this.audio?.pause(); } catch { /* already stopped */ }
+    void this.ctx!.resume();
+    this.playing = true;
+    this.cycleStart = this.ctx!.currentTime;
+    this.nextAt = this.ctx!.currentTime + 0.06;
+    this.startScheduler();
+    this.emit();
+  }
+
+  private playCustom(key: string): void {
+    this.stopScheduler();
+    const entry = this.custom.find((c) => c.id === key);
+    if (!entry) { this.playing = false; this.emit(); return; }
+    if (typeof Audio === 'undefined') {
+      this.notice = 'Audio files need a browser to play.';
+      this.playing = false;
+      this.emit();
+      return;
+    }
+    try {
+      if (!this.audio) {
+        this.audio = new Audio();
+        this.audio.preload = 'auto';
+        this.audio.onended = () => this.next();
+        this.audio.ontimeupdate = () => { if (this.playing && this.isCustom()) this.emit(); };
+        this.audio.onerror = () => {
+          if (!this.isCustom()) return;
+          this.notice = 'That file would not play — it was removed.';
+          void this.removeCurrentUpload();
+        };
+      }
+      if (this.audioKey !== entry.id) {
+        this.audio.src = entry.url;
+        this.audioKey = entry.id;
+      }
+      const started = this.audio.play();
+      this.playing = true;
+      this.emit();
+      if (started && typeof started.catch === 'function') {
+        started.catch(() => {
+          this.playing = false;
+          this.notice = 'That file would not play.';
+          this.emit();
+        });
+      }
+    } catch {
+      this.playing = false;
+      this.notice = 'That file would not play.';
+      this.emit();
+    }
+  }
+
+  /** Uploads: validate, keep the blob across reloads, queue + play it. */
+  async addUpload(file: File): Promise<void> {
+    const audioLike = file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|flac|aac|opus|webm)$/i.test(file.name);
+    if (!audioLike) {
+      this.notice = `"${file.name}" is not an audio file.`;
+      this.emit();
+      return;
+    }
+    if (file.size > 30 * 1024 * 1024) {
+      this.notice = `"${file.name}" is over 30 MB — too big to keep.`;
+      this.emit();
+      return;
+    }
+    if (this.custom.length >= 50) {
+      this.notice = 'Upload shelf is full (50) — remove one first.';
+      this.emit();
+      return;
+    }
+    const id = `up-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    const title = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'My upload';
+    let url: string;
+    try {
+      url = URL.createObjectURL(file);
+    } catch {
+      this.notice = 'Could not read that file.';
+      this.emit();
+      return;
+    }
+    this.custom.push({ id, title, url });
+    this.notice = '';
+    // Persist in the background; the track plays this session regardless.
+    void this.persistUpload({ id, title, blob: file });
+    this.play(this.custom.length - 1);
+  }
+
+  /** Remove whichever upload is currently selected. */
+  async removeCurrentUpload(): Promise<void> {
+    const item = this.track;
+    if (!item.custom) return;
+    const wasPlaying = this.playing && this.isCustom();
+    this.pause();
+    const at = this.custom.findIndex((c) => c.id === item.key);
+    if (at >= 0) {
+      try { URL.revokeObjectURL(this.custom[at].url); } catch { /* already gone */ }
+      this.custom.splice(at, 1);
+    }
+    if (this.audio && this.audioKey === item.key) {
+      try { this.audio.removeAttribute('src'); this.audio.load(); } catch { /* noop */ }
+      this.audioKey = null;
+    }
+    const db = await openDb();
+    if (db) {
+      try { await deleteUpload(db, item.key); } catch { /* session-only */ }
+      try { db.close(); } catch { /* noop */ }
+    }
+    this.clampIndex();
+    this.notice = 'Upload removed.';
+    if (wasPlaying) { this.notice = ''; this.play(); }
+    else this.emit();
+  }
+
+  /** Load persisted uploads (object URLs are rebuilt each launch). */
+  async loadCustom(): Promise<void> {
+    const db = await openDb();
+    if (!db) return;
+    try {
+      const rows = await readAllUploads(db);
+      this.custom = rows.map((r) => {
+        let url = '';
+        try { url = URL.createObjectURL(r.blob); } catch { /* unreadable row */ }
+        return { id: r.id, title: r.title, url };
+      }).filter((c) => c.url);
+      this.clampIndex();
+    } catch { /* stay with builtins */ }
+    try { db.close(); } catch { /* noop */ }
+    this.emit();
+  }
+
+  private async persistUpload(row: StoredUpload): Promise<void> {
+    const db = await openDb();
+    if (!db) return;
+    try { await putUpload(db, row); }
+    catch { /* session-only — still plays until reload */ }
+    try { db.close(); } catch { /* noop */ }
+  }
   private startScheduler(): void {
     this.stopScheduler();
     const schedule = () => {
       if (!this.ctx || !this.gain) return;
-      const t = this.track;
+      const t = this.builtin();
+      if (!t) return;
       const stepSec = 60 / t.bpm / 2;
       while (this.nextAt < this.ctx.currentTime + 0.35) {
         const note = t.notes[this.step % t.notes.length];
@@ -150,3 +401,6 @@ class Player {
 }
 
 export const player = new Player();
+
+// Rebuild persisted uploads in the background; the card updates via onChange.
+void player.loadCustom();

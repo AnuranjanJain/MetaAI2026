@@ -61,7 +61,7 @@ export function renderMusicPlayer(el: HTMLElement | null): void {
           <div class="tonearm"><span class="tonearm-head"></span></div>
         </div>
         <div class="player-info">
-          <div class="player-kicker">Now playing</div>
+          <div class="player-kicker" data-music-kicker>Now playing</div>
           <div class="track-title" data-music-title></div>
           <div class="track-artist" data-music-artist></div>
         </div>
@@ -73,6 +73,14 @@ export function renderMusicPlayer(el: HTMLElement | null): void {
         <button class="icon-btn" data-music="next" aria-label="Next track" title="Next track">⏭</button>
         <button class="icon-btn fav-btn" data-music="fav" data-music-fav aria-label="Favourite this track" title="Favourite">♥</button>
       </div>
+      <div class="player-sub">
+        <label class="icon-btn upload-label" title="Upload my own music (kept in this browser)">
+          ⤒ <span>My music</span>
+          <input type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.webm" multiple hidden data-music-upload />
+        </label>
+        <button class="icon-btn" data-music="remove" data-music-remove title="Remove this upload">✕</button>
+      </div>
+      <p class="music-note" data-music-note hidden></p>
     </div>`;
   el.querySelectorAll<HTMLButtonElement>('[data-music]').forEach((b) =>
     b.addEventListener('click', () => {
@@ -80,7 +88,16 @@ export function renderMusicPlayer(el: HTMLElement | null): void {
       else if (b.dataset.music === 'next') player.next();
       else if (b.dataset.music === 'prev') player.prev();
       else if (b.dataset.music === 'fav') player.toggleFavorite();
+      else if (b.dataset.music === 'remove') void player.removeCurrentUpload();
     }));
+  el.querySelector<HTMLInputElement>('[data-music-upload]')?.addEventListener('change', (ev) => {
+    const input = ev.target as HTMLInputElement;
+    const files = [...(input.files ?? [])];
+    input.value = '';
+    if (!files.length) return;
+    // Queue uploads in order; the first one starts playing.
+    void files.reduce((p, f) => p.then(() => player.addUpload(f)), Promise.resolve());
+  });
   updateMusicUi();
 }
 
@@ -90,10 +107,12 @@ function updateMusicUi(): void {
   if (!root) return;
   const t = player.track;
   root.querySelector('[data-player-card]')?.classList.toggle('playing', player.playing);
+  const kicker = root.querySelector('[data-music-kicker]');
+  if (kicker) kicker.textContent = t.custom ? 'My music' : 'Now playing';
   const title = root.querySelector('[data-music-title]');
   if (title) title.textContent = t.title;
   const artist = root.querySelector('[data-music-artist]');
-  if (artist) artist.textContent = `${t.artist} · ${t.mood}`;
+  if (artist) artist.textContent = t.custom ? 'your upload' : `${t.artist} · ${t.mood}`;
   const toggle = root.querySelector('[data-music-toggle]');
   if (toggle) toggle.textContent = player.playing ? '⏸' : '▶';
   const bar = root.querySelector<HTMLElement>('[data-music-bar]');
@@ -102,5 +121,15 @@ function updateMusicUi(): void {
   if (fav) {
     fav.classList.toggle('fav-on', player.isFavorite());
     fav.setAttribute('aria-pressed', String(player.isFavorite()));
+  }
+  const remove = root.querySelector<HTMLElement>('[data-music-remove]');
+  if (remove) {
+    remove.style.display = player.isCustom() ? '' : 'none';
+    remove.setAttribute('aria-label', `Remove upload “${t.title}”`);
+  }
+  const note = root.querySelector<HTMLElement>('[data-music-note]');
+  if (note) {
+    note.hidden = !player.notice;
+    note.textContent = player.notice;
   }
 }
