@@ -24,7 +24,10 @@ written — nothing below is invented:
 - Response shape: OpenAI chat-completions shape; generated text lives at
   `response.choices[0].message.content`
 - Model ID: `muse-spark-1.3` — "Recommended for new work" per Meta's models
-  page (agentic/coding tuned, replaces 1.2/1.1)
+  page (agentic/coding tuned, replaces 1.2/1.1). This deployment uses
+  `muse-spark-1.3-contributor` instead (user choice, 2026-11-01):
+  discounted, but Contributor mode may use prompts/completions to train
+  future Meta models.
 - Instruction messages use the `developer` role (verified in the Chat
   Completions guide); `reasoning_effort: "none"` returns HTTP 400 on Muse
   Spark, so the proxy sends no reasoning parameter

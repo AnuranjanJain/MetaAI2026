@@ -6,9 +6,10 @@
 
 import type { AssistantIntent } from '../src/core/assistant.js';
 
-/** Verified 2026-11-01: OpenAI-compatible chat endpoint + recommended model. */
+/** Verified 2026-11-01: OpenAI-compatible chat endpoint. Contributor model
+    per user choice: discounted, but Meta may train on prompts/completions. */
 const MUSE_URL = 'https://api.meta.ai/v1/chat/completions';
-const MUSE_MODEL = 'muse-spark-1.3';
+const MUSE_MODEL = 'muse-spark-1.3-contributor';
 
 const MAX_TRANSCRIPT = 1000;
 const MAX_FIELD = 500;
