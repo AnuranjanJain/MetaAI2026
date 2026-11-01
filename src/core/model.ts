@@ -153,9 +153,11 @@ export function buildChecklistForEvent(
   return items;
 }
 
-/** Create a task/event/item/reference from an edited proposal. Pure; store commits. */
+/** Create a task/event/item/reference from an edited proposal. Pure; store commits.
+    `locations` lets an item proposal's `locationHint` (a spot name) resolve
+    to a real spot; unknown names leave the item unplaced, as before. */
 export function applyProposal(
-  capture: Capture, proposal: Proposal,
+  capture: Capture, proposal: Proposal, locations: StorageLocation[] = [],
 ): { task?: Task; event?: CalEvent; belonging?: Belonging; capture: Capture } {
   const now = nowIso();
   const confirmed: Capture = { ...capture, status: 'confirmed', proposal, resultKind: proposal.type };
@@ -178,10 +180,14 @@ export function applyProposal(
     return { event, capture: { ...confirmed, resultId: event.id } };
   }
   if (proposal.type === 'item') {
+    const hint = (proposal.locationHint ?? '').trim().toLowerCase();
+    const spot = hint ? locations.find((l) => l.name.trim().toLowerCase() === hint) : undefined;
     const belonging: Belonging = {
       id: createId('bel'), name: proposal.itemName || proposal.title,
-      description: proposal.prep, history: [], createdAt: now,
+      description: proposal.prep, locationId: spot?.id, history: [],
+      createdAt: now,
     };
+    if (spot) belonging.history = [{ locationId: spot.id, at: now, note: 'Placed by voice' }];
     return { belonging, capture: { ...confirmed, resultId: belonging.id } };
   }
   return { capture: { ...confirmed, resultId: capture.id } };

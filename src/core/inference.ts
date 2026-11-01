@@ -249,7 +249,91 @@ function explainOutfit(parts: Clothing[], occasion: string): string {
   return `${names}. Picked for “${occasion}” from available items${colors ? ` in ${colors}` : ''} — ${owned} of ${parts.length} from your own clothes.`;
 }
 
-// --- Belonging search ---
+// --- On-device text matching (shared by belongings + clothing search) ---
+
+/** Lowercase, split on non-alphanumerics, drop stop-words, expand
+    synonyms on the raw tokens, then light stemming (plurals, -ing, -ed)
+    so "chargers" and "trainers" both match. Pure. */
+export function normalizeTokens(text: string): string[] {
+  const raw = text
+    .toLowerCase()
+    .replace(/-/g, ' ')
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 1 && !STOP.has(t));
+  return [...expandSynonyms(raw)].map(stemToken).filter((t) => t.length > 1);
+}
+
+function stemToken(t: string): string {
+  if (t.length > 5 && t.endsWith('ing')) return t.slice(0, -3);
+  if (t.length > 4 && t.endsWith('ed')) return t.slice(0, -2);
+  if (t.length > 4 && t.endsWith('es')) return t.slice(0, -2);
+  if (t.length > 3 && t.endsWith('s')) return t.slice(0, -1);
+  return t;
+}
+
+/** Hand-built synonyms for common household + clothing words, looked up
+    on raw (unstemmed) tokens so plurals still expand. Small and honest:
+    this is lexical matching, not embedding search. */
+const SYNONYMS: Record<string, string> = {
+  charger: 'adapter', adapter: 'charger', cable: 'charger', cord: 'charger',
+  hoodie: 'sweatshirt', sweatshirt: 'hoodie', jumper: 'sweatshirt',
+  sneakers: 'trainers', trainers: 'sneakers', kicks: 'sneakers',
+  tee: 'shirt', shirt: 'tee', tshirt: 'shirt',
+  jeans: 'denim', denim: 'jeans',
+  specs: 'glasses', shades: 'sunglasses',
+  laptop: 'notebook', mobile: 'phone', cellphone: 'phone',
+  keys: 'keyring', wallet: 'purse', purse: 'wallet',
+  brolly: 'umbrella',
+};
+
+function expandSynonyms(tokens: string[]): Set<string> {
+  const out = new Set(tokens);
+  for (const t of tokens) {
+    const s = SYNONYMS[t];
+    if (s) out.add(s);
+  }
+  return out;
+}
+
+/** Edit distance capped at 2 — enough for a typo, cheap on short tokens. */
+function editDistance(a: string, b: string): number {
+  if (Math.abs(a.length - b.length) > 1) return 2;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = tmp;
+    }
+    if (Math.min(...prev) > 1) return 2;
+  }
+  return prev[b.length];
+}
+
+/** Score how well haystack tokens cover the query: exact/stem/synonym hits
+    weigh 2, one-typo fuzzy hits weigh 1 (tokens ≥ 5 chars only). */
+export function tokenMatchScore(queryTokens: Set<string>, hayTokens: string[]): number {
+  let score = 0;
+  const hay = new Set(hayTokens);
+  for (const q of queryTokens) {
+    if (hay.has(q)) { score += 2; continue; }
+    let fuzzy = false;
+    if (q.length >= 5) {
+      for (const h of hay) {
+        if (h.length >= 5 && editDistance(q, h) <= 1) { fuzzy = true; break; }
+      }
+    }
+    if (fuzzy) score += 1;
+  }
+  return score;
+}
+
+/** Expand query text into matchable tokens (normalized + synonyms). */
+export function queryTokenSet(query: string): Set<string> {
+  return new Set(normalizeTokens(query));
+}
 
 export interface SearchHit {
   belonging: Belonging;
@@ -257,23 +341,41 @@ export interface SearchHit {
   score: number;
 }
 
-/** Token search over names, descriptions, and location names. Returns ranked hits. */
+/** Token search over names, descriptions, and location names, with
+    stemming, synonyms, and typo tolerance. Exact hits rank above fuzzy.
+    Returns ranked hits. */
 export function searchBelongings(
   query: string, belongings: Belonging[], locations: StorageLocation[],
 ): SearchHit[] {
-  const tokens = query.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 1 && !STOP.has(t));
-  if (!tokens.length) return [];
+  const tokens = queryTokenSet(query);
+  if (!tokens.size) return [];
   const locById = new Map(locations.map((l) => [l.id, l]));
   return belongings
     .map((b) => {
       const loc = b.locationId ? locById.get(b.locationId) : undefined;
-      const hay = `${b.name} ${b.description ?? ''} ${loc?.name ?? ''}`.toLowerCase();
-      let matched = 0;
-      for (const t of tokens) if (hay.includes(t)) matched++;
-      return { belonging: b, location: loc, score: matched };
+      const hay = normalizeTokens(`${b.name} ${b.description ?? ''} ${loc?.name ?? ''}`);
+      return { belonging: b, location: loc, score: tokenMatchScore(tokens, hay) };
     })
     .filter((h) => h.score > 0)
     .sort((a, b) => b.score - a.score || a.belonging.name.localeCompare(b.belonging.name));
+}
+
+export interface ClothingHit {
+  item: Clothing;
+  score: number;
+}
+
+/** Token search over clothing names, colors, categories, and tags. */
+export function searchClothing(query: string, catalog: Clothing[]): ClothingHit[] {
+  const tokens = queryTokenSet(query);
+  if (!tokens.size) return [];
+  return catalog
+    .map((c) => {
+      const hay = normalizeTokens(`${c.name} ${c.color ?? ''} ${c.category} ${c.tags.join(' ')}`);
+      return { item: c, score: tokenMatchScore(tokens, hay) };
+    })
+    .filter((h) => h.score > 0)
+    .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name));
 }
 
 const STOP = new Set(['where', 'did', 'put', 'the', 'find', 'what', 'and', 'for', 'with', 'have', 'that', 'this', 'from']);
