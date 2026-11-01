@@ -412,11 +412,24 @@ export class Shell {
   private renderSoundPanel(body: HTMLElement): void {
     const s = store.state.sound;
     const areas: ('desk' | 'doorway' | 'wardrobe' | 'shelf' | 'window')[] = ['desk', 'doorway', 'wardrobe', 'shelf', 'window'];
+    const uploads = player.custom;
     body.innerHTML = `
       <p class="meta">Clatter adds small local sounds to useful moments. Off by default, always mutable, never required.</p>
       <div class="card"><div class="row"><div class="grow"><h3>Room sounds</h3>
         <div class="meta">Precomposed motifs, played on this device. No recording, no network.</div></div>
         <button class="btn ${s.enabled ? 'plain' : 'soft'} small" data-snd="toggle">${s.enabled ? 'On' : 'Off'}</button></div></div>
+      <div class="card"><div class="row"><div class="grow"><h3>My music</h3>
+        <div class="meta">Your own audio files, kept in this browser. They play through the record player.</div></div>
+        <button class="btn soft small" data-up="pick">⤒ Upload</button>
+        <input type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.webm" multiple hidden data-up-input /></div>
+        ${uploads.length ? `<ul class="upload-list">${uploads.map((u, i) => `
+          <li>
+            <button class="btn ${player.track.key === u.id && player.playing ? 'plain' : 'soft'} small" data-up-play="${i}">${player.track.key === u.id && player.playing ? '⏸' : '▶'}</button>
+            <span class="upload-name">${esc(u.title)}</span>
+            <button class="btn plain small" data-up-del="${esc(u.id)}" aria-label="Remove upload ${esc(u.title)}" title="Remove">✕</button>
+          </li>`).join('')}</ul>`
+          : `<p class="meta">Nothing uploaded yet.</p>`}
+        ${player.notice ? `<p class="music-note">${esc(player.notice)}</p>` : ''}</div>
       <div class="card"><div class="row"><div class="grow"><h3>Mute everything</h3></div>
         <button class="btn soft small" data-snd="mute">${s.muted ? 'Unmute' : 'Mute'}</button></div></div>
       <div class="card"><h3>Today’s soundtrack</h3>
@@ -433,6 +446,28 @@ export class Shell {
       }));
     body.querySelectorAll<HTMLButtonElement>('[data-motif]').forEach((b) =>
       b.addEventListener('click', () => playMotif(b.dataset.motif as 'desk')));
+    const upInput = body.querySelector<HTMLInputElement>('[data-up-input]');
+    body.querySelector<HTMLButtonElement>('[data-up="pick"]')?.addEventListener('click', () => upInput?.click());
+    upInput?.addEventListener('change', () => {
+      const files = [...(upInput.files ?? [])];
+      upInput.value = '';
+      if (!files.length) return;
+      void files.reduce((p, f) => p.then(() => player.addUpload(f)), Promise.resolve())
+        .then(() => this.openSheet('clatter'));
+    });
+    body.querySelectorAll<HTMLButtonElement>('[data-up-play]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const at = Number(b.dataset.upPlay);
+        const id = player.custom[at]?.id;
+        if (!id) return;
+        if (player.track.key === id && player.playing) player.pause();
+        else player.play(at); // uploads sit first in the queue, so index == position
+        this.openSheet('clatter');
+      }));
+    body.querySelectorAll<HTMLButtonElement>('[data-up-del]').forEach((b) =>
+      b.addEventListener('click', () => {
+        void player.removeUpload(b.dataset.upDel!).then(() => this.openSheet('clatter'));
+      }));
   }
 
   // ---------- toast ----------

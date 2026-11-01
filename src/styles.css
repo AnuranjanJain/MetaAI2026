@@ -373,8 +373,9 @@ body.sheet-open { overflow: hidden; }
 .player-controls .icon-btn.on { background: var(--butter); border-color: transparent; }
 .fav-btn { color: var(--ink-soft) !important; }
 .fav-btn.fav-on { background: var(--terra) !important; color: #fff !important; border-color: transparent !important; }
-.player-sub { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 8px; }
-.upload-label { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+.upload-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.upload-list li { display: flex; align-items: center; gap: 8px; }
+.upload-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .music-note { font-size: 12px; color: var(--terra); text-align: center; margin: 8px 0 0; }
 
 /* ---------- Late mode ---------- */

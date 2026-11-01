@@ -312,25 +312,30 @@ class Player {
   async removeCurrentUpload(): Promise<void> {
     const item = this.track;
     if (!item.custom) return;
-    const wasPlaying = this.playing && this.isCustom();
-    this.pause();
-    const at = this.custom.findIndex((c) => c.id === item.key);
-    if (at >= 0) {
-      try { URL.revokeObjectURL(this.custom[at].url); } catch { /* already gone */ }
-      this.custom.splice(at, 1);
-    }
-    if (this.audio && this.audioKey === item.key) {
+    await this.removeUpload(item.key, this.playing);
+  }
+
+  /** Remove one upload by id. When it was playing, `resume` starts the
+      entry that slides into its place. */
+  async removeUpload(id: string, resume = false): Promise<void> {
+    const at = this.custom.findIndex((c) => c.id === id);
+    if (at < 0) return;
+    const selected = this.isCustom() && this.track.key === id;
+    if (selected) this.pause();
+    try { URL.revokeObjectURL(this.custom[at].url); } catch { /* already gone */ }
+    this.custom.splice(at, 1);
+    if (this.audio && this.audioKey === id) {
       try { this.audio.removeAttribute('src'); this.audio.load(); } catch { /* noop */ }
       this.audioKey = null;
     }
     const db = await openDb();
     if (db) {
-      try { await deleteUpload(db, item.key); } catch { /* session-only */ }
+      try { await deleteUpload(db, id); } catch { /* session-only */ }
       try { db.close(); } catch { /* noop */ }
     }
     this.clampIndex();
     this.notice = 'Upload removed.';
-    if (wasPlaying) { this.notice = ''; this.play(); }
+    if (resume) { this.notice = ''; this.play(); }
     else this.emit();
   }
 

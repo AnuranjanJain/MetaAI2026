@@ -55,6 +55,18 @@ describe('music queue', () => {
     assert.equal(player.index, 0);
   });
 
+  it('removes one upload by id and leaves the rest queued', async () => {
+    player.custom = [
+      { id: 'up-a', title: 'First', url: 'blob:1' },
+      { id: 'up-b', title: 'Second', url: 'blob:2' },
+    ];
+    await player.removeUpload('up-a');
+    assert.deepEqual(player.custom.map((c) => c.id), ['up-b']);
+    assert.equal(player.queue[0].key, 'up-b');
+    await player.removeUpload('missing-id');
+    assert.equal(player.custom.length, 1);
+  });
+
   it('rejects non-audio files without touching the queue', async () => {
     const before = player.queue.length;
     await player.addUpload({ name: 'notes.txt', type: 'text/plain', size: 10 } as unknown as File);
