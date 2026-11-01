@@ -1,0 +1,86 @@
+// Listening sessions: final segments accumulate across browser restarts,
+// interim text replaces (never appends), output is trimmed and capped.
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { createTranscript, chunkForSpeech, stripTrailingStopPhrase } from '../src/voice.js';
+
+describe('createTranscript', () => {
+  it('appends final segments across restarts', () => {
+    const t = createTranscript();
+    t.addFinal('Dentist appointment');
+    t.addFinal('tomorrow at 2:30');
+    assert.equal(t.text(), 'Dentist appointment tomorrow at 2:30');
+    assert.equal(t.heardAnything(), true);
+  });
+
+  it('replaces interim text instead of duplicating it', () => {
+    const t = createTranscript();
+    t.addFinal('Dentist');
+    t.setInterim('tomor');
+    assert.equal(t.text(), 'Dentist tomor');
+    t.setInterim('tomorrow at');
+    assert.equal(t.text(), 'Dentist tomorrow at');
+    t.addFinal('tomorrow at 2:30');
+    t.setInterim('');
+    assert.equal(t.text(), 'Dentist tomorrow at 2:30');
+  });
+
+  it('ignores blank segments and reports nothing heard when empty', () => {
+    const t = createTranscript();
+    t.addFinal('   ');
+    t.setInterim('  ');
+    assert.equal(t.text(), '');
+    assert.equal(t.heardAnything(), false);
+  });
+
+  it('caps output at 1000 characters', () => {
+    const t = createTranscript();
+    t.addFinal('word '.repeat(500));
+    assert.ok(t.text().length <= 1000);
+  });
+});
+
+describe('stripTrailingStopPhrase', () => {
+  it('removes trailing stop phrases, tolerating case and punctuation', () => {
+    assert.equal(stripTrailingStopPhrase("Dentist tomorrow that's it"), 'Dentist tomorrow');
+    assert.equal(stripTrailingStopPhrase('Buy milk, that\'s all.'), 'Buy milk');
+    assert.equal(stripTrailingStopPhrase('Pack charger, I\'m DONE!'), 'Pack charger');
+    assert.equal(stripTrailingStopPhrase('finished'), '');
+    assert.equal(stripTrailingStopPhrase('  That\'s it  '), '');
+  });
+
+  it('collapses stacked phrases and stray commas', () => {
+    assert.equal(stripTrailingStopPhrase('Call Sam done, that\'s it'), 'Call Sam done');
+  });
+
+  it('leaves mid-sentence and non-phrase endings alone', () => {
+    assert.equal(
+      stripTrailingStopPhrase("I'm done talking about the dentist"),
+      "I'm done talking about the dentist",
+    );
+    assert.equal(stripTrailingStopPhrase('done deal'), 'done deal');
+    assert.equal(stripTrailingStopPhrase('unfinished'), 'unfinished');
+  });
+
+  it('strips a trailing done-command word — ordering is the caller\'s job', () => {
+    // The pure helper strips; classifyIntent must classify the RAW text
+    // first so "Mark buy milk done" still matches as done.
+    assert.equal(stripTrailingStopPhrase('Mark buy milk done'), 'Mark buy milk');
+  });
+});
+
+describe('chunkForSpeech', () => {
+  it('returns one chunk for short text', () => {
+    assert.deepEqual(chunkForSpeech('Hello there.'), ['Hello there.']);
+    assert.deepEqual(chunkForSpeech('   '), []);
+  });
+
+  it('splits long answers at sentence boundaries without truncation', () => {
+    const text = `${'First sentence here. '.repeat(30)}${'Second sentence here. '.repeat(30)}`;
+    const chunks = chunkForSpeech(text);
+    assert.ok(chunks.length > 1);
+    assert.ok(chunks.every((c) => c.length <= 480));
+    assert.equal(chunks.join(' ').replace(/\s+/g, ' ').trim(), text.replace(/\s+/g, ' ').trim());
+  });
+});
