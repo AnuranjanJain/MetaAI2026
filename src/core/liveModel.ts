@@ -8,6 +8,7 @@ import { stripTrailingStopPhrase } from '../voice.js';
 import type { AppState } from './types.js';
 
 export const LIVE_LABEL = 'Live Muse interpretation';
+export const LIVE_INTRO = 'Live Muse interpretation is on — spoken transcripts go to the proxy';
 
 const LIVE_KEY = 'pocketroom.liveMuse';
 const MAX_TRANSCRIPT = 1000;
@@ -37,6 +38,17 @@ function configuredProxyUrl(): string | null {
   } catch {
     return null;
   }
+}
+
+/** True when a proxy URL reached the build (per-result labels still show
+    which path each answer actually took). */
+export function proxyConfigured(): boolean {
+  return configuredProxyUrl() !== null;
+}
+
+/** True when live mode is both opted-in and configured. */
+export function liveModeActive(): boolean {
+  return liveModeEnabled() && proxyConfigured();
 }
 
 type IntentKind = AssistantIntent['kind'];

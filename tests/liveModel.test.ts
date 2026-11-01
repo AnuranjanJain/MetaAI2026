@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  LIVE_LABEL, interpretViaMuse, liveModeEnabled, resolveIntent,
+  LIVE_INTRO, LIVE_LABEL, interpretViaMuse, liveModeActive, liveModeEnabled, proxyConfigured, resolveIntent,
 } from '../src/core/liveModel.js';
 import { emptyState } from '../src/core/model.js';
 
@@ -57,6 +57,19 @@ describe('live adapter basics', () => {
 
   it('is off by default where no opt-in exists', () => {
     assert.equal(liveModeEnabled(), false);
+  });
+
+  it('names live mode in the intro without demo copy', () => {
+    assert.match(LIVE_INTRO, /Live Muse interpretation is on/);
+    assert.doesNotMatch(LIVE_INTRO, /demo/i);
+  });
+
+  it('needs both opt-in and a configured proxy to show live', async () => {
+    assert.equal(proxyConfigured(), false);
+    assert.equal(liveModeActive(), false);
+    await withLiveMode(true, async () => {
+      assert.equal(liveModeActive(), false);
+    });
   });
 
   it('passes a valid intent through untouched', async () => {

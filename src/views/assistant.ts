@@ -6,7 +6,7 @@ import { store } from '../store.js';
 import { buildChecklistForEvent, createId, nowIso, todayKey } from '../core/model.js';
 import { applySlotAnswer, missingSlots, propose, searchBelongings, DEMO_LABEL, type ProposalSlot } from '../core/inference.js';
 import { deskSummary, findRenamable, haveAnswer, matchEvent, matchRoutine, summarizeCreated, summarizeProposal, wardrobeAnswer, wearPick, whereAnswer } from '../core/assistant.js';
-import { LIVE_LABEL, resolveIntent } from '../core/liveModel.js';
+import { LIVE_INTRO, LIVE_LABEL, liveModeActive, resolveIntent } from '../core/liveModel.js';
 import { handsFreeEnabled, isConversationEnd, setHandsFree, speak, speakAndWait, startListeningUntilDone, stopSpeak, stripConversationEnd, voiceConfirm, type ListeningSession } from '../voice.js';
 import { showProposal } from './areas/desk.js';
 import { nextCommitment } from './room.js';
@@ -34,7 +34,8 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
     </div>`;
   const body = document.createElement('div');
   body.className = 'sheet-body';
-  body.innerHTML = `<p class="meta">Say a task, event, or thing to remember — e.g. “Dentist tomorrow at 2:30 pm”, “Buy batteries, 20 minutes”, or “Where is my adapter?”. You always confirm before anything is saved — by tap, or by voice when Hands-free is on. ${esc(DEMO_LABEL)}.</p>
+  const modeNote = liveModeActive() ? LIVE_INTRO : DEMO_LABEL;
+  body.innerHTML = `<p class="meta">Say a task, event, or thing to remember — e.g. “Dentist tomorrow at 2:30 pm”, “Buy batteries, 20 minutes”, or “Where is my adapter?”. You always confirm before anything is saved — by tap, or by voice when Hands-free is on. ${esc(modeNote)}.</p>
     <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn plain" id="as-start">🎙️ Start listening</button><button class="btn soft" id="as-desk">Type instead</button><button class="btn soft" id="as-handsfree">Hands-free: off</button></div>
     <p class="meta" id="as-status" aria-live="polite" style="margin-top:12px">Ready when you are.</p><div id="proposal"></div>`;
   sheetRoot.querySelector('.sheet')!.appendChild(body);

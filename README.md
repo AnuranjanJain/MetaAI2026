@@ -58,7 +58,7 @@ More screenshots (planner, wardrobe photo) coming soon.
 | Voice in/out | Browser Web Speech API (`SpeechRecognition` + `speechSynthesis`), feature-detected |
 | Music/SFX | WebAudio — synthesized loops + UI motifs, zero audio files |
 | Images | Canvas-downscaled JPEG data URLs (quota-safe local persistence) |
-| Tests | `node:test` + `tsx` — 115 tests, pure logic in `src/core/` |
+| Tests | `node:test` + `tsx` — 117 tests, pure logic in `src/core/` |
 | Backend (optional) | Vercel serverless proxy (`api/interpret.ts`) → Muse API (`muse-spark-1.3`), key in Vercel server secret only |
 
 ## Usage
@@ -68,7 +68,7 @@ Prereqs: Node 18+.
 ```bash
 npm install
 npm run dev      # http://127.0.0.1:5173 — localhost is a secure context, so the mic works here
-npm test         # 115 tests across assistant / planner / wardrobe / scheduling / live adapter
+npm test         # 117 tests across assistant / planner / wardrobe / scheduling / live adapter
 npm run build    # tsc --noEmit && vite build → dist/
 npm run preview  # serve the production build locally
 ```
