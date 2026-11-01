@@ -405,3 +405,47 @@ export async function voiceConfirm(question: string, opts: { timeoutMs?: number 
   if (!heard) return null;
   return parseConfirmAnswer(heard);
 }
+
+// ---------- Conversation mode (hands-free) ----------
+
+/** Sign-offs that end the whole conversation — never a bare "that's it" or
+    "done", which only finish the current utterance. End-anchored like the
+    stop phrases. */
+const CONVO_END = [
+  "that's it for now", 'thats it for now',
+  "that's all for now", 'thats all for now',
+  "that's enough for now", 'thats enough for now',
+  "that's it for today", 'thats it for today',
+  "that's all for today", 'thats all for today',
+  "we're done for now", 'we are done for now',
+  "i'm done for now", 'im done for now',
+  'done for now', 'done for today',
+  'stop listening', 'stop for now',
+  'goodbye', 'bye for now',
+];
+
+function normalizeUtterance(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ').replace(/[.?!]+$/, '').trim();
+}
+
+/** True when the utterance ends with a conversation sign-off. Pure. */
+export function isConversationEnd(text: string): boolean {
+  const lower = normalizeUtterance(text);
+  if (!lower) return false;
+  return CONVO_END.some((p) => lower === p || lower.endsWith(` ${p}`));
+}
+
+/** Remove one trailing sign-off so "add milk, that's it for now" keeps its
+    final turn ("add milk"). Pure. */
+export function stripConversationEnd(text: string): string {
+  const t = text.trim().replace(/\s+/g, ' ').replace(/[.?!]+$/, '').trim();
+  if (!t) return '';
+  for (const p of CONVO_END) {
+    if (t.toLowerCase() === p || t.toLowerCase().endsWith(` ${p}`)) {
+      return t.slice(0, t.length - p.length).trim()
+        .replace(/[,;.]+$/, '').trim()
+        .replace(/\s+(and|so|then)$/i, '').trim();
+    }
+  }
+  return t;
+}

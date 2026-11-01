@@ -1,14 +1,12 @@
-// Voice assistant sheet: talk → intent → (voice slot-filling) → the same
-// editable confirm card the desk uses → spoken read-back. Every mutation waits
-// for a Confirm — by tap, or by a spoken “yes” when the user has opted into
-// Hands-free (a localStorage toggle, off by default). Hands-free clicks the
-// same buttons a tap would; it never invents a new save path.
+// Voice assistant: talk → intent → slot-filling → desk confirm card → read-back.
+// Mutations wait for Confirm by tap, or spoken “yes” in opt-in Hands-free mode.
+// Hands-free clicks the same buttons a tap would; it never invents a save path.
 
 import { store } from '../store.js';
 import { buildChecklistForEvent, createId, nowIso, todayKey } from '../core/model.js';
 import { applySlotAnswer, missingSlots, propose, searchBelongings, DEMO_LABEL, type ProposalSlot } from '../core/inference.js';
 import { classifyIntent, deskSummary, findRenamable, haveAnswer, matchEvent, matchRoutine, summarizeCreated, summarizeProposal, wardrobeAnswer, wearPick, whereAnswer } from '../core/assistant.js';
-import { handsFreeEnabled, setHandsFree, speak, speakAndWait, startListeningUntilDone, stopSpeak, stripTrailingStopPhrase, voiceConfirm, type ListeningSession } from '../voice.js';
+import { handsFreeEnabled, isConversationEnd, setHandsFree, speak, speakAndWait, startListeningUntilDone, stopSpeak, stripConversationEnd, stripTrailingStopPhrase, voiceConfirm, type ListeningSession } from '../voice.js';
 import { showProposal } from './areas/desk.js';
 import { nextCommitment } from './room.js';
 import { esc, lastStored, type Ui } from '../shell.js';
@@ -16,10 +14,10 @@ import type { Capture, Proposal } from '../core/types.js';
 
 let sessionSeq = 0;
 let activeSession: ListeningSession | null = null;
+let nullStreak = 0, stopAfterTurn = false;
 
 const SLOT_PROMPTS: Record<ProposalSlot, (p: Proposal) => string> = {
-  date: (p) => `What date is ${p.title}?`,
-  time: (p) => `What time does ${p.title} start?`,
+  date: (p) => `What date is ${p.title}?`, time: (p) => `What time does ${p.title} start?`,
   duration: (p) => `How long should ${p.title} take?`,
 };
 
@@ -35,43 +33,47 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
     </div>`;
   const body = document.createElement('div');
   body.className = 'sheet-body';
-  body.innerHTML = `
-    <p class="meta">Say a task, event, or thing to remember — e.g. “Dentist tomorrow at
-      2:30 pm”, “Buy batteries, 20 minutes”, or “Where is my adapter?”.
-      You always confirm before anything is saved — by tap, or by voice when
-      Hands-free is on. ${esc(DEMO_LABEL)}.</p>
-    <div class="row" style="flex-wrap:wrap;gap:8px">
-      <button class="btn plain" id="as-start">🎙️ Start listening</button>
-      <button class="btn soft" id="as-desk">Type instead</button>
-      <button class="btn soft" id="as-handsfree">Hands-free: off</button>
-    </div>
-    <p class="meta" id="as-status" aria-live="polite" style="margin-top:12px">Ready when you are.</p>
-    <div id="proposal"></div>`;
+  body.innerHTML = `<p class="meta">Say a task, event, or thing to remember — e.g. “Dentist tomorrow at 2:30 pm”, “Buy batteries, 20 minutes”, or “Where is my adapter?”. You always confirm before anything is saved — by tap, or by voice when Hands-free is on. ${esc(DEMO_LABEL)}.</p>
+    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn plain" id="as-start">🎙️ Start listening</button><button class="btn soft" id="as-desk">Type instead</button><button class="btn soft" id="as-handsfree">Hands-free: off</button></div>
+    <p class="meta" id="as-status" aria-live="polite" style="margin-top:12px">Ready when you are.</p><div id="proposal"></div>`;
   sheetRoot.querySelector('.sheet')!.appendChild(body);
 
   const hf = body.querySelector<HTMLButtonElement>('#as-handsfree')!;
   const paintHf = () => { hf.textContent = `Hands-free: ${handsFreeEnabled() ? 'on' : 'off'}`; };
   paintHf();
+  let busy = false, stopLoop = false;
+  const startBtn = body.querySelector<HTMLButtonElement>('#as-start')!;
+  const conversationLoop = async (): Promise<void> => {
+    if (busy) return;
+    busy = true; stopLoop = false;
+    try {
+      while (alive() && handsFreeEnabled() && !stopLoop) {
+        startBtn.textContent = '⏹ Stop';
+        if ((await run(body, ui, alive, close)) === 'stop' || stopAfterTurn) { stopAfterTurn = false; break; }
+      }
+    } finally { busy = false; if (body.isConnected) startBtn.textContent = '🎙️ Start listening'; }
+  };
   hf.addEventListener('click', () => {
-    setHandsFree(!handsFreeEnabled());
-    paintHf();
-    setStatus(body, handsFreeEnabled()
-      ? 'Hands-free on: after each card, say “yes” to confirm or “no” to cancel. Every save is still read back aloud.'
-      : 'Hands-free off: tap to confirm, as before.');
+    setHandsFree(!handsFreeEnabled()); paintHf();
+    setStatus(body, handsFreeEnabled() ? 'Hands-free on: I’ll keep listening until “that’s it for now” or ⏹ Stop.' : 'Hands-free off: tap to confirm, as before.');
+    if (handsFreeEnabled() && !busy) void conversationLoop();
   });
 
   const alive = () => session === sessionSeq && body.isConnected;
   const close = () => {
     if (session === sessionSeq) sessionSeq++;
-    activeSession?.cancel();
-    activeSession = null;
-    stopSpeak();
-    sheetRoot.innerHTML = '';
-    document.body.classList.remove('sheet-open');
+    activeSession?.cancel(); activeSession = null; stopSpeak();
+    sheetRoot.innerHTML = ''; document.body.classList.remove('sheet-open');
   };
   sheetRoot.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
   body.querySelector('#as-desk')!.addEventListener('click', () => { close(); ui.open('desk', { focusAdd: true }); });
-  body.querySelector('#as-start')!.addEventListener('click', () => void run(body, ui, alive, close));
+  startBtn.addEventListener('click', () => {
+    if (activeSession) { activeSession.stop(); return; }
+    if (busy) { stopLoop = true; return; }
+    if (handsFreeEnabled()) void conversationLoop();
+    else { busy = true; void run(body, ui, alive, close).finally(() => { busy = false; }); }
+  });
+  if (handsFreeEnabled()) void conversationLoop();
   (sheetRoot.querySelector('.sheet-head button') as HTMLButtonElement).focus();
 }
 
@@ -80,56 +82,41 @@ function setStatus(body: HTMLElement, text: string): void {
   if (el) el.textContent = text.length > 220 ? text.slice(0, 220) + '…' : text;
 }
 
-/** Hands-free confirm: ask aloud, and click the same yes/no button a tap
-    would. Only runs when the user opted in; anything unheard leaves the card
-    open for a tap. */
-function offerVoiceConfirm(
-  body: HTMLElement, alive: () => boolean,
-  question: string, yesSel: string, noSel: string,
-): void {
-  if (!handsFreeEnabled()) return;
-  void (async () => {
+/** Hands-free confirm: ask aloud, then click the same yes/no button a tap would.
+    Await it so the next listen starts only after the spoken answer. */
+function offerVoiceConfirm(body: HTMLElement, alive: () => boolean, question: string, yesSel: string, noSel: string): Promise<void> {
+  if (!handsFreeEnabled()) return Promise.resolve();
+  return (async () => {
     const answer = await voiceConfirm(question);
     if (!alive()) return;
-    const yes = body.querySelector<HTMLButtonElement>(yesSel);
-    const no = body.querySelector<HTMLButtonElement>(noSel);
+    const yes = body.querySelector<HTMLButtonElement>(yesSel); const no = body.querySelector<HTMLButtonElement>(noSel);
     if (!yes || !no) return;
-    if (answer === 'yes') yes.click();
-    else if (answer === 'no') no.click();
+    if (answer === 'yes') yes.click(); else if (answer === 'no') no.click();
     else setStatus(body, `${question} Say “yes” or “no”, or tap.`);
   })();
 }
 
-/**
- * One full utterance through a self-restarting session. The start button
- * morphs into a Done button while listening; the status line previews what
- * has been heard so far. Resolves null when nothing usable was heard.
- */
+/** One utterance: Done ends it early; the status previews heard text. In
+    hands-free the pause gate is shorter so turns feel continuous. */
 async function listenUtterance(body: HTMLElement, start: HTMLButtonElement, hint: string): Promise<string | null> {
   const idleLabel = '🎙️ Start listening';
   const session = startListeningUntilDone({
+    silenceMs: handsFreeEnabled() ? 3000 : 5000,
     onInterim: (text) => { if (body.isConnected) setStatus(body, text ? `Heard: “${text}”` : hint); },
   });
-  activeSession = session;
-  start.disabled = false;
-  start.textContent = '⏺ Done';
+  activeSession = session; start.disabled = false; start.textContent = '⏺ Done';
   const out = await session.done;
   activeSession = null;
-  if (body.isConnected) {
-    start.textContent = idleLabel;
-    start.disabled = false;
-  }
+  if (body.isConnected) { start.textContent = idleLabel; start.disabled = false; }
   return out;
 }
 
-/** Read-only lookup card shared by the `where` intent and the ambiguous
-    follow-up. Returns true when anything matched. */
+/** Read-only lookup card for `where` and the ambiguous follow-up. True if matched. */
 function showLookup(body: HTMLElement, query: string): boolean {
   const hits = searchBelongings(query, store.state.belongings, store.state.locations).slice(0, 3);
   const host = body.querySelector('#proposal')!;
   host.innerHTML = hits.length
-    ? `<div class="card"><h3>Here’s what I have</h3><ul class="clean">${hits.map((h) => `
-        <li><strong>${esc(h.belonging.name)}</strong><br/><span class="loc-note">${esc(lastStored(store.state, h.belonging.id))}</span></li>`).join('')}</ul></div>`
+    ? `<div class="card"><h3>Here’s what I have</h3><ul class="clean">${hits.map((h) => `<li><strong>${esc(h.belonging.name)}</strong><br/><span class="loc-note">${esc(lastStored(store.state, h.belonging.id))}</span></li>`).join('')}</ul></div>`
     : `<div class="card"><h3>Not recorded yet</h3><p class="meta">No stored item matches “${esc(query)}”.</p></div>`;
   return hits.length > 0;
 }
@@ -137,15 +124,36 @@ function showLookup(body: HTMLElement, query: string): boolean {
 async function run(
   body: HTMLElement, ui: Ui,
   alive: () => boolean, close: () => void,
-): Promise<void> {
+): Promise<'stop' | undefined> {
   const start = body.querySelector<HTMLButtonElement>('#as-start')!;
-  setStatus(body, 'Listening… speak naturally. Tap ⏺ Done, say “that’s it”, or pause ~5 seconds when finished.');
-  const heard = await listenUtterance(body, start, 'Listening… speak naturally.');
+  const convo = handsFreeEnabled();
+  setStatus(body, convo
+    ? 'Listening… speak naturally. Say “that’s it for now” to stop, or tap ⏹ Stop.'
+    : 'Listening… speak naturally. Tap ⏺ Done, say “that’s it”, or pause ~5 seconds when finished.');
+  const t0 = Date.now();
+  let heard = await listenUtterance(body, start, 'Listening… speak naturally.');
   if (!alive()) return;
   if (!heard) {
+    if (convo && Date.now() - t0 < 5000) nullStreak++; else nullStreak = 0;
+    if (convo && nullStreak >= 3) {
+      setStatus(body, 'The mic is not responding — tap ⏹ Stop, check permissions, then Start listening.');
+      return 'stop';
+    }
     setStatus(body, 'Did not catch that — tap Start listening to try again, or type instead.');
     ui.toast('Did not catch that — try typing instead.');
+    if (convo) await new Promise((r) => setTimeout(r, 800));
     return;
+  }
+  nullStreak = 0;
+  if (isConversationEnd(heard)) {
+    const rest = stripConversationEnd(heard);
+    if (!rest) {
+      setStatus(body, 'Okay, all done.');
+      speak('Okay, all done.');
+      return convo ? 'stop' : undefined;
+    }
+    heard = rest;
+    if (convo) stopAfterTurn = true;
   }
 
   // Classify the raw text first so a done-command ending in "done" still
@@ -232,11 +240,9 @@ async function run(
       if (!follow) { setStatus(body, 'No name heard — routine not created.'); return; }
       name = follow;
     }
-    host.innerHTML = `
-      <div class="card" style="border-color:var(--terra)"><h3>New routine?</h3>
-        <label class="field">Name<input type="text" id="as-rou-name" value="${esc(name)}" /></label>
-        <div class="row"><button class="btn plain" id="as-rou-yes">Create</button>
-        <button class="btn soft" id="as-rou-no">Cancel</button></div></div>`;
+    host.innerHTML = `<div class="card" style="border-color:var(--terra)"><h3>New routine?</h3>
+      <label class="field">Name<input type="text" id="as-rou-name" value="${esc(name)}" /></label>
+      <div class="row"><button class="btn plain" id="as-rou-yes">Create</button><button class="btn soft" id="as-rou-no">Cancel</button></div></div>`;
     setStatus(body, `Create the routine “${name}”? (${intent.reason})`);
     host.querySelector('#as-rou-no')!.addEventListener('click', () => { host.innerHTML = ''; setStatus(body, 'Okay, left as is.'); });
     host.querySelector('#as-rou-yes')!.addEventListener('click', () => {
@@ -244,10 +250,9 @@ async function run(
       store.update((d) => { d.routines.push({ id: createId('rou'), name: final, belongingIds: [], tasks: [] }); });
       ui.toast(`Routine “${final}” created. Link items to it in the doorway.`, { action: 'Undo', onAction: () => store.undo() });
       speak(`Created routine ${final}.`);
-      host.innerHTML = '';
-      setStatus(body, `Created routine “${final}”. Link items to it in the doorway.`);
+      host.innerHTML = ''; setStatus(body, `Created routine “${final}”. Link items to it in the doorway.`);
     });
-    offerVoiceConfirm(body, alive, `Create the routine “${name}”?`, '#as-rou-yes', '#as-rou-no');
+    await offerVoiceConfirm(body, alive, `Create the routine “${name}”?`, '#as-rou-yes', '#as-rou-no');
     return;
   }
 
@@ -268,11 +273,9 @@ async function run(
     const linked = hits.length && hits.filter((h) => h.score === topScore).length === 1 && topScore >= 2
       ? hits[0].belonging : null;
     const what = linked ? `“${linked.name}” (linked stored item)` : `“${intent.itemText}” (new routine task)`;
-    host.innerHTML = `
-      <div class="card" style="border-color:var(--terra)"><h3>Add to “${esc(routine.name)}”?</h3>
-        <p>${esc(what)}</p>
-        <div class="row"><button class="btn plain" id="as-ra-yes">Add</button>
-        <button class="btn soft" id="as-ra-no">Cancel</button></div></div>`;
+    host.innerHTML = `<div class="card" style="border-color:var(--terra)"><h3>Add to “${esc(routine.name)}”?</h3>
+      <p>${esc(what)}</p>
+      <div class="row"><button class="btn plain" id="as-ra-yes">Add</button><button class="btn soft" id="as-ra-no">Cancel</button></div></div>`;
     setStatus(body, `Add ${what} to “${routine.name}”? (${intent.reason})`);
     host.querySelector('#as-ra-no')!.addEventListener('click', () => { host.innerHTML = ''; setStatus(body, 'Okay, left as is.'); });
     host.querySelector('#as-ra-yes')!.addEventListener('click', () => {
@@ -283,11 +286,9 @@ async function run(
         else r.tasks.push({ id: createId('rout'), title: intent.itemText });
       });
       ui.toast(`Added to “${routine.name}”.`, { action: 'Undo', onAction: () => store.undo() });
-      speak(`Added to ${routine.name}.`);
-      host.innerHTML = '';
-      setStatus(body, `Added to “${routine.name}”.`);
+      speak(`Added to ${routine.name}.`); host.innerHTML = ''; setStatus(body, `Added to “${routine.name}”.`);
     });
-    offerVoiceConfirm(body, alive, `Add ${what} to “${routine.name}”?`, '#as-ra-yes', '#as-ra-no');
+    await offerVoiceConfirm(body, alive, `Add ${what} to “${routine.name}”?`, '#as-ra-yes', '#as-ra-no');
     return;
   }
 
@@ -331,11 +332,9 @@ async function run(
       speak(answer);
       return;
     }
-    host.innerHTML = `
-      <div class="card" style="border-color:var(--terra)"><h3>Pack for “${esc(event.title)}”?</h3>
-        <p class="meta">From routine “${esc(routine.name)}”: ${esc(labels.join('; '))}</p>
-        <div class="row"><button class="btn plain" id="as-out-yes">Build list</button>
-        <button class="btn soft" id="as-out-no">Cancel</button></div></div>`;
+    host.innerHTML = `<div class="card" style="border-color:var(--terra)"><h3>Pack for “${esc(event.title)}”?</h3>
+      <p class="meta">From routine “${esc(routine.name)}”: ${esc(labels.join('; '))}</p>
+      <div class="row"><button class="btn plain" id="as-out-yes">Build list</button><button class="btn soft" id="as-out-no">Cancel</button></div></div>`;
     setStatus(body, `Build the list for “${event.title}”? (${intent.reason})`);
     host.querySelector('#as-out-no')!.addEventListener('click', () => { host.innerHTML = ''; setStatus(body, 'Okay, left as is.'); });
     host.querySelector('#as-out-yes')!.addEventListener('click', () => {
@@ -344,10 +343,9 @@ async function run(
       store.update((d) => { d.checklist.push(...fresh); });
       ui.toast(`Added ${fresh.length} items to the list.`, { action: 'Undo', onAction: () => store.undo() });
       speak(`Packing list ready for ${event!.title}.`);
-      host.innerHTML = '';
-      setStatus(body, `Packing list ready for “${event!.title}”.`);
+      host.innerHTML = ''; setStatus(body, `Packing list ready for “${event!.title}”.`);
     });
-    offerVoiceConfirm(body, alive, `Build the list for “${event.title}”?`, '#as-out-yes', '#as-out-no');
+    await offerVoiceConfirm(body, alive, `Build the list for “${event.title}”?`, '#as-out-yes', '#as-out-no');
     return;
   }
 
@@ -385,7 +383,7 @@ async function run(
       host.innerHTML = '';
       setStatus(body, `Renamed to “${final}”.`);
     });
-    offerVoiceConfirm(body, alive, `Rename “${m.name}” to “${intent.newName}”?`, '#as-ren-yes', '#as-ren-no');
+    await offerVoiceConfirm(body, alive, `Rename “${m.name}” to “${intent.newName}”?`, '#as-ren-yes', '#as-ren-no');
     return;
   }
 
@@ -407,7 +405,7 @@ async function run(
       host.innerHTML = '';
       setStatus(body, `Spot “${final}” saved.`);
     });
-    offerVoiceConfirm(body, alive, `Create the spot “${intent.name}”?`, '#as-spot-yes', '#as-spot-no');
+    await offerVoiceConfirm(body, alive, `Create the spot “${intent.name}”?`, '#as-spot-yes', '#as-spot-no');
     return;
   }
 
@@ -453,7 +451,7 @@ async function run(
       host.innerHTML = '';
       setStatus(body, `Marked “${intent.title}” done.`);
     });
-    offerVoiceConfirm(body, alive, `Mark “${intent.title}” done?`, '#as-done-yes', '#as-done-no');
+    await offerVoiceConfirm(body, alive, `Mark “${intent.title}” done?`, '#as-done-yes', '#as-done-no');
     return;
   }
 
@@ -488,8 +486,8 @@ async function run(
     proposal: p,
     onFinished: (final, outcome) => {
       if (outcome === 'confirmed') speak(summarizeCreated(final));
-      close();
+      if (!handsFreeEnabled()) close();
     },
   });
-  offerVoiceConfirm(body, alive, 'Create this?', '#p-confirm', '#p-archive');
+  await offerVoiceConfirm(body, alive, 'Create this?', '#p-confirm', '#p-archive');
 }

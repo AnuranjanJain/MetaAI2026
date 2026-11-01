@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTranscript, chunkForSpeech, parseConfirmAnswer, stripTrailingStopPhrase } from '../src/voice.js';
+import { createTranscript, chunkForSpeech, isConversationEnd, parseConfirmAnswer, stripConversationEnd, stripTrailingStopPhrase } from '../src/voice.js';
 
 describe('createTranscript', () => {
   it('appends final segments across restarts', () => {
@@ -91,6 +91,26 @@ describe('parseConfirmAnswer', () => {
     assert.equal(parseConfirmAnswer('done'), null);
     assert.equal(parseConfirmAnswer('yesterday I bought milk'), null);
     assert.equal(parseConfirmAnswer('note this down'), null);
+  });
+});
+
+describe('conversation sign-off', () => {
+  it('ends only on for-now/for-today/stop-listening forms', () => {
+    for (const t of ["that's it for now", "That's all for today!", "we're done for now", 'stop listening', 'goodbye']) {
+      assert.equal(isConversationEnd(t), true, t);
+    }
+  });
+
+  it('leaves utterance-ending stop phrases to the current turn', () => {
+    for (const t of ["that's it", 'done', 'finished', 'add milk', 'mark buy milk done']) {
+      assert.equal(isConversationEnd(t), false, t);
+    }
+  });
+
+  it('keeps a final request before the sign-off', () => {
+    assert.equal(stripConversationEnd("Add milk, that's it for now"), 'Add milk');
+    assert.equal(stripConversationEnd("add milk and that's it for now"), 'add milk');
+    assert.equal(stripConversationEnd('stop listening'), '');
   });
 });
 
