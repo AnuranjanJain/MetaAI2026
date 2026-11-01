@@ -8,6 +8,7 @@ import { applyProposal } from '../src/core/model.js';
 import { searchBelongings, searchClothing } from '../src/core/inference.js';
 import { stripTrailingStopPhrase } from '../src/voice.js';
 import { applySlotAnswer, missingSlots, propose } from '../src/core/inference.js';
+import { cleanItemText, collapseRepeats, extractNamedItem, extractPlace } from '../src/core/inference.js';
 import { emptyState } from '../src/core/model.js';
 import type { AppState, Task } from '../src/core/types.js';
 
@@ -262,8 +263,60 @@ describe('classifyIntent', () => {
   });
 });
 
-describe('voice slot filling', () => {
-  it('lists missing event slots in date-then-time order', () => {
+describe('getting the point, not just the words', () => {
+  it('hears "an item called water bottle … at the table" as an item, not a note', () => {
+    const p = propose('There is an item called water bottle and it is at the table so you have to create a item which is water bottle', false);
+    assert.equal(p.type, 'item');
+    assert.match(p.itemName ?? '', /water bottle/i);
+    assert.equal(p.place, 'table');
+    assert.equal(p.locationHint, 'table');
+  });
+
+  it('extracts names from called/named/which-is phrasing', () => {
+    assert.deepEqual(extractNamedItem('remember adapter called USB-C dongle'), { name: 'USB-C dongle', strong: true });
+    assert.deepEqual(extractNamedItem('a item which is water bottle'), { name: 'water bottle', strong: true });
+    assert.equal(extractNamedItem('Dentist tomorrow at 2:30pm').name, '');
+  });
+
+  it('never lets a weak subject match hijack an event', () => {
+    const p = propose('Meeting is at 3pm tomorrow', false);
+    assert.equal(p.type, 'event');
+    assert.equal(p.time, '15:00');
+  });
+
+  it('finds lowercase places but never mistakes a time for one', () => {
+    assert.equal(extractPlace('passport in top drawer'), 'top drawer');
+    assert.equal(extractPlace('keys on the kitchen table'), 'kitchen table');
+    assert.equal(extractPlace('Dentist tomorrow at 2:30pm'), undefined);
+    const p = propose('Remember the passport in top drawer', false);
+    assert.equal(p.type, 'item');
+    assert.equal(p.place, 'top drawer');
+  });
+
+  it('collapses speech stutter and strips item filler', () => {
+    assert.equal(collapseRepeats('add water water bottle'), 'add water bottle');
+    // Stutter collapses first: a doubled word keeps one copy. Nothing is
+    // invented — "water water" heard twice stays "water", never "water bottle".
+    assert.equal(cleanItemText('item water water'), 'water');
+    assert.equal(cleanItemText('item water water bottle'), 'water bottle');
+    assert.equal(cleanItemText('item called water bottle'), 'water bottle');
+  });
+
+  it('keeps the point for add-to-routine commands', () => {
+    const s = stateWith([]);
+    s.routines = [{ id: 'r1', name: 'Gym', belongingIds: [], tasks: [] }];
+    const stutter = classifyIntent('Add water water bottle to gym routine', s);
+    assert.equal(stutter.kind, 'routineAdd');
+    if (stutter.kind !== 'routineAdd') throw new Error('expected routineAdd');
+    assert.equal(stutter.itemText, 'water bottle');
+    const filler = classifyIntent('Add item called water bottle to gym routine', s);
+    assert.equal(filler.kind, 'routineAdd');
+    if (filler.kind !== 'routineAdd') throw new Error('expected routineAdd');
+    assert.equal(filler.itemText, 'water bottle');
+  });
+});
+
+describe('voice slot filling', () => {  it('lists missing event slots in date-then-time order', () => {
     const p = propose('Meeting with Sara', false);
     assert.deepEqual(missingSlots(p), ['date', 'time']);
     const full = propose('Dentist tomorrow at 2:30pm', false);

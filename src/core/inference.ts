@@ -14,12 +14,18 @@ const EVENT_WORDS = [
   'interview', 'dinner', 'lunch', 'flight', 'exam', 'deadline', 'party', 'call',
 ];
 const TASK_WORDS = ['buy', 'do', 'finish', 'submit', 'call', 'email', 'send', 'homework', 'read', 'write', 'clean'];
-const ITEM_WORDS = ['bring', 'pack', 'remember', 'forget', 'need', 'charger', 'adapter', 'keys', 'passport', 'umbrella', 'laptop'];
+const ITEM_WORDS = ['bring', 'pack', 'remember', 'forget', 'need', 'item', 'called', 'named', 'charger', 'adapter', 'keys', 'passport', 'umbrella', 'laptop'];
 
 const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i;
 const TIME24_RE = /\b([01]?\d|2[0-3]):([0-5]\d)\b/;
 const DURATION_RE = /(\d+)\s*(min|mins|minutes|h|hr|hrs|hour|hours)\b/i;
-const PLACE_RE = /\b(?:at|in|room|building)\s+([A-Z][\w .'-]{1,30})/;
+// Voice transcripts are lowercase, so the place word may be too ("at the
+// table"). Time-looking captures ("at 2:30pm") are rejected downstream.
+const PLACE_RE = /\b(?:at|in|on|room|building)\s+(?:the\s+|my\s+)?([a-z0-9][\w .'-]{1,30})/i;
+/** Clause words that end a place/item capture ("the table so you have to…"). */
+const CLAUSE_CUT = /\b(so|which|that|who|because|please|you have|i have|we have|to create|to add|to make)\b/i;
+/** Captures that are really times, not places ("at 2:30pm", "at 5 pm"). */
+const TIME_LIKE = /^\d{1,2}:\d\d|^\d+\s*(am|pm)\b/i;
 
 function parseTime(text: string): string | undefined {
   const m12 = TIME_RE.exec(text);
@@ -72,22 +78,106 @@ function score(text: string, words: string[]): number {
   return words.reduce((n, w) => (tokens.has(w) ? n + 1 : n), 0);
 }
 
+/** Collapse speech stutter — immediate word repeats ("water water" → "water").
+    Case- and punctuation-insensitive. Pure. */
+export function collapseRepeats(text: string): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  for (const w of words) {
+    const bare = w.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const prev = out.length ? out[out.length - 1].toLowerCase().replace(/[^a-z0-9]/g, '') : null;
+    if (!bare || bare !== prev) out.push(w);
+  }
+  return out.join(' ');
+}
+
+/** Cut a capture at the first clause boundary ("the table so you have…"
+    → "the table"). Returns the trimmed head, or '' when nothing survives. */
+function headBeforeClause(capture: string): string {
+  const cut = capture.search(CLAUSE_CUT);
+  const head = (cut === -1 ? capture : capture.slice(0, cut)).trim().replace(/[,;.]+$/, '').trim();
+  return head;
+}
+
+/** Remove leading determiners/filler from an extracted name. Pure. */
+function stripNameFiller(name: string): string {
+  let n = name.trim().replace(/^[,.;:'"]+|[,.;:'"]+$/g, '').trim();
+  for (let i = 0; i < 3; i++) {
+    const next = n.replace(/^(?:there is|there's|an?|the|my|this|that|of|item|thing|object|new)\b\s+/i, '').trim();
+    if (next === n) break;
+    n = next;
+  }
+  return n.replace(/^[,.;:'"]+|[,.;:'"]+$/g, '').trim();
+}
+
+/** Pull the thing being talked about out of rambling speech. Tries, in order:
+    "item called X" / "called X" / "named X", "which/that is X" (strong —
+    the speaker named the thing), then the subject of "X is at/in/on Y"
+    (weak — must not hijack events like "Meeting is at 3pm"). Pure. */
+export function extractNamedItem(text: string): { name: string; strong: boolean } {
+  const none = { name: '', strong: false };
+  const patterns = [
+    /(?:item|thing|object)\s+(?:called|named|which is|that is)\s+(.+)/i,
+    /\bcalled\s+(.+)/i,
+    /\bnamed\s+(.+)/i,
+    /\b(?:which|that)\s+is\s+(.+)/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(text);
+    if (!m) continue;
+    // Name ends where the location or next clause starts.
+    const head = headBeforeClause(m[1].split(/\s+(?:and it is|and\b)?\s*(?:is\s+)?(?:at|in|on)\s+(?:the\s+|my\s+)?/i)[0]);
+    const name = stripNameFiller(head);
+    if (name && name.length <= 60) return { name, strong: true };
+  }
+  const subject = /^(.+?)\s+is\s+(?:at|in|on)\s+/i.exec(text);
+  if (subject) {
+    const name = stripNameFiller(
+      subject[1].replace(/^(?:please\s+)?(?:remember|pack|bring|buy|add|note|save)\s+/i, ''),
+    );
+    if (name && name.length <= 60 && !TIME_LIKE.test(name)) return { name, strong: false };
+  }
+  return none;
+}
+
+/** Clean routine-task / item text: collapse stutter, drop filler like a
+    leading "item (called)" so "add item called water bottle" keeps the point.
+    Pure. */
+export function cleanItemText(text: string): string {
+  const collapsed = collapseRepeats(text.trim().replace(/\s+/g, ' '));
+  const noVerb = collapsed.replace(/^(?:please\s+)?(?:remember|pack|bring|buy|add|note|save)\s+/i, '');
+  const noItem = noVerb.replace(/^(?:an?\s+)?items?\s+(?:called\s+|named\s+)?/i, '');
+  return stripNameFiller(noItem);
+}
+
+/** Extract a place from "at/in/on <place>", tolerating lowercase voice
+    transcripts. Returns undefined for time-looking captures ("at 2:30pm").
+    Pure. */
+export function extractPlace(text: string): string | undefined {
+  const m = PLACE_RE.exec(text);
+  if (!m) return undefined;
+  const head = headBeforeClause(m[1]);
+  if (!head || TIME_LIKE.test(head)) return undefined;
+  return head;
+}
+
 /** Propose a type + extracted fields. Extracts only supported info; gaps go to `missing`. */
 export function propose(text: string, hasImage: boolean): Proposal {
-  const clean = text.trim();
+  const clean = collapseRepeats(text.trim());
   const time = parseTime(clean);
   const date = parseDate(clean);
   const durationMin = parseDuration(clean);
-  const placeMatch = PLACE_RE.exec(clean);
-  const place = placeMatch ? placeMatch[1].trim() : undefined;
+  const place = extractPlace(clean);
+  const named = extractNamedItem(clean);
 
   const eventHits = score(clean, EVENT_WORDS);
   const taskScore = score(clean, TASK_WORDS);
   const itemScore = score(clean, ITEM_WORDS);
 
   let type: Proposal['type'] = 'reference';
-  if (eventHits >= 1 || (time && taskScore === 0 && itemScore === 0)) type = 'event';
-  else if (itemScore > taskScore && itemScore > 0) type = 'item';
+  if (named.strong) type = 'item';
+  else if (eventHits >= 1 || (time && taskScore === 0 && itemScore === 0)) type = 'event';
+  else if (named.name || (itemScore > taskScore && itemScore > 0)) type = 'item';
   else if (taskScore > 0) type = 'task';
 
   const missing: string[] = [];
@@ -96,7 +186,7 @@ export function propose(text: string, hasImage: boolean): Proposal {
     if (!time) missing.push('No time found in the source — please pick one.');
   }
   if (type === 'task' && !durationMin) missing.push('No duration found — assumed 30 minutes, edit as needed.');
-  if (type === 'item') missing.push('Storage location unknown — add it in Drawers & shelves.');
+  if (type === 'item' && !place) missing.push('Storage location unknown — add it in Drawers & shelves.');
   if (hasImage && !clean) missing.push('Image has no caption — describe it so extraction stays grounded.');
 
   const confidence = missing.length === 0 ? 'high' : missing.length <= 1 ? 'medium' : 'low';
@@ -109,20 +199,33 @@ export function propose(text: string, hasImage: boolean): Proposal {
           ? 'Read as something to remember or bring. No location is claimed.'
           : 'No clear schedule, action, or item signals — kept as a reference note.';
 
+  const itemName = type === 'item' ? (named.name || guessItemName(clean)) : undefined;
   return {
     type,
-    title: type === 'item' ? guessItemName(clean) : firstSentence(clean),
+    title: type === 'item' ? (itemName ?? firstSentence(clean)) : firstSentence(clean),
     date, time, place, durationMin,
-    itemName: type === 'item' ? guessItemName(clean) : undefined,
+    itemName,
+    // A heard place doubles as the spot hint so Confirm can place it at once.
+    locationHint: type === 'item' ? place : undefined,
     confidence, missing, rationale,
   };
 }
 
 function guessItemName(text: string): string {
+  const named = extractNamedItem(text);
+  if (named.name) return named.name;
   const lower = text.toLowerCase();
   for (const w of ['adapter', 'charger', 'keys', 'passport', 'umbrella', 'laptop', 'headphones', 'wallet', 'gym bag', 'textbook']) {
     if (lower.includes(w)) return w.replace(/\b\w/g, (c) => c.toUpperCase());
   }
+  // Last resort: strip a leading command verb and any location tail so
+  // "remember water bottle in top drawer" keeps "water bottle", not the
+  // whole sentence.
+  const stripped = stripNameFiller(
+    text.replace(/^(?:please\s+)?(?:remember|pack|bring|buy|add|note|save)\s+(?:an?\s+|the\s+|my\s+)?/i, ''),
+  );
+  const head = headBeforeClause(stripped.split(/\s+(?:at|in|on)\s+(?:the\s+|my\s+)?/i)[0]);
+  if (head && head.length <= 60 && head.split(/\s+/).length <= 6) return head;
   return firstSentence(text);
 }
 

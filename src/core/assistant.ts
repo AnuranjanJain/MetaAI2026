@@ -3,7 +3,7 @@
 // would mutate state is returned as an intent for the UI to confirm — the
 // assistant never creates, completes, or deletes records on its own.
 
-import { normalizeTokens, queryTokenSet, searchBelongings, searchClothing, suggestOutfits, occasionFromEvent, tokenMatchScore } from './inference.js';
+import { cleanItemText, collapseRepeats, normalizeTokens, queryTokenSet, searchBelongings, searchClothing, suggestOutfits, occasionFromEvent, tokenMatchScore } from './inference.js';
 import { todayKey } from './model.js';
 import type { AppState, Id, Proposal } from './types.js';
 
@@ -24,7 +24,7 @@ export type AssistantIntent =
   | { kind: 'ambiguous'; text: string; reason: string }
   | { kind: 'unknown'; text: string; reason: string };
 
-const clean = (text: string) => text.trim().replace(/\s+/g, ' ').slice(0, 1000);
+const clean = (text: string) => collapseRepeats(text.trim().replace(/\s+/g, ' ').slice(0, 1000));
 const stripEnd = (text: string) => text.replace(/[.?!]+$/, '').trim();
 const norm = (text: string) => text.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -209,8 +209,15 @@ export function classifyIntent(rawText: string, state: AppState): AssistantInten
 
   const routineAdd = /^(?:please\s+)?add\s+(.+?)\s+to\s+(?:the\s+|my\s+)?(.+?)\s+routine$/i.exec(stripped);
   if (routineAdd && stripEnd(routineAdd[1]) && stripEnd(routineAdd[2])) {
+    const itemText = cleanItemText(stripEnd(routineAdd[1]));
+    if (!itemText) {
+      return {
+        kind: 'ambiguous', text,
+        reason: 'Could not tell what to add to the routine — say it once more.',
+      };
+    }
     return {
-      kind: 'routineAdd', itemText: stripEnd(routineAdd[1]), routineQuery: stripEnd(routineAdd[2]),
+      kind: 'routineAdd', itemText, routineQuery: stripEnd(routineAdd[2]),
       reason: 'Heard as add-to-routine — review what gets linked before anything changes.',
     };
   }
