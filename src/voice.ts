@@ -110,6 +110,23 @@ export interface ListeningSession {
   stop: () => void;
   /** Discard everything — resolve null. */
   cancel: () => void;
+  /** Last recognition error code ('not-allowed', 'network', …), or null
+      when the session heard silence or simply timed out. */
+  lastError: () => string | null;
+}
+
+/** Actionable status text for a listening failure. Pure. */
+export function micErrorMessage(code: string | null): string {
+  if (code === 'not-allowed' || code === 'service-not-allowed') {
+    return 'Mic is blocked for this site — click the mic icon in the address bar, Allow it, then try again.';
+  }
+  if (code === 'network') {
+    return 'Speech recognition needs internet — the browser sends audio to its speech service. Check your connection.';
+  }
+  if (code === 'audio-capture') {
+    return 'No microphone found — check one is plugged in and selected as input.';
+  }
+  return 'Did not catch that — tap Start listening to try again, or type instead.';
 }
 
 export interface ListenUntilDoneOpts {
@@ -172,6 +189,7 @@ export function startListeningUntilDone(opts: ListenUntilDoneOpts = {}): Listeni
   let userDone = false;
   let restarts = 0;
   let lastHeardAt = 0;
+  let lastError: string | null = null;
   let rec: RecognitionLike | null = null;
   let watchdog: number | undefined;
   let resolveDone!: (v: string | null) => void;
@@ -222,8 +240,9 @@ export function startListeningUntilDone(opts: ListenUntilDoneOpts = {}): Listeni
       } catch { /* keep listening */ }
     };
     r.onerror = (e) => {
+      lastError = e?.error ?? 'unknown';
       // Permission / service failures are final — restarting would spin.
-      if (e?.error === 'not-allowed' || e?.error === 'service-not-allowed') {
+      if (lastError === 'not-allowed' || lastError === 'service-not-allowed') {
         finish(transcript.text() ? transcript.text() : null);
       }
     };
@@ -263,6 +282,7 @@ export function startListeningUntilDone(opts: ListenUntilDoneOpts = {}): Listeni
     done,
     stop: () => { userDone = true; finishWithTranscript(); },
     cancel: () => { userDone = true; finish(null); },
+    lastError: () => lastError,
   };
 }
 

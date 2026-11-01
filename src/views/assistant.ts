@@ -6,8 +6,10 @@ import { store } from '../store.js';
 import { buildChecklistForEvent, createId, nowIso, todayKey } from '../core/model.js';
 import { applySlotAnswer, missingSlots, propose, searchBelongings, DEMO_LABEL, type ProposalSlot } from '../core/inference.js';
 import { deskSummary, findRenamable, haveAnswer, matchEvent, matchRoutine, summarizeCreated, summarizeProposal, wardrobeAnswer, wearPick, whereAnswer } from '../core/assistant.js';
-import { LIVE_INTRO, LIVE_LABEL, liveModeActive, resolveIntent } from '../core/liveModel.js';
-import { handsFreeEnabled, isConversationEnd, setHandsFree, speak, speakAndWait, startListeningUntilDone, stopSpeak, stripConversationEnd, voiceConfirm, type ListeningSession } from '../voice.js';
+import { DIRECT_INTRO, DIRECT_LABEL, LIVE_INTRO, LIVE_LABEL, liveModeActive, resolveIntent } from '../core/liveModel.js';
+import { hasKey } from '../core/byok.js';
+import { handsFreeEnabled, isConversationEnd, micErrorMessage, setHandsFree, speak, speakAndWait, startListeningUntilDone, stopSpeak, stripConversationEnd, voiceConfirm, type ListeningSession } from '../voice.js';
+import { keyFieldHtml, wireKeyField } from './key.js';
 import { showProposal } from './areas/desk.js';
 import { nextCommitment } from './room.js';
 import { esc, lastStored, type Ui } from '../shell.js';
@@ -34,9 +36,10 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
     </div>`;
   const body = document.createElement('div');
   body.className = 'sheet-body';
-  const modeNote = liveModeActive() ? LIVE_INTRO : DEMO_LABEL;
+  const modeNote = hasKey() ? DIRECT_INTRO : liveModeActive() ? LIVE_INTRO : DEMO_LABEL;
   body.innerHTML = `<p class="meta">Say a task, event, or thing to remember — e.g. “Dentist tomorrow at 2:30 pm”, “Buy batteries, 20 minutes”, or “Where is my adapter?”. You always confirm before anything is saved — by tap, or by voice when Hands-free is on. ${esc(modeNote)}.</p>
     <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn plain" id="as-start">🎙️ Start listening</button><button class="btn soft" id="as-desk">Type instead</button><button class="btn soft" id="as-handsfree">Hands-free: off</button></div>
+    ${keyFieldHtml('as')}
     <p class="meta" id="as-status" aria-live="polite" style="margin-top:12px">Ready when you are.</p><div id="proposal"></div>`;
   sheetRoot.querySelector('.sheet')!.appendChild(body);
 
@@ -45,13 +48,26 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
   paintHf();
   let busy = false, stopLoop = false;
   const startBtn = body.querySelector<HTMLButtonElement>('#as-start')!;
+  const reportCrash = (e: unknown, hint: string): void => {
+    console.error('assistant turn failed', e);
+    if (!alive()) return;
+    const detail = e instanceof Error && e.message ? `: ${e.message.slice(0, 120)}` : '';
+    setStatus(body, `Something went wrong${detail} — ${hint}`);
+  };
   const conversationLoop = async (): Promise<void> => {
     if (busy) return;
     busy = true; stopLoop = false;
     try {
       while (alive() && handsFreeEnabled() && !stopLoop) {
         startBtn.textContent = '⏹ Stop';
-        if ((await run(body, ui, alive, close)) === 'stop' || stopAfterTurn) { stopAfterTurn = false; break; }
+        let outcome: 'stop' | undefined;
+        try {
+          outcome = await run(body, ui, alive, close);
+        } catch (e) {
+          reportCrash(e, 'tap ⏹ Stop, then Start listening.');
+          break;
+        }
+        if (outcome === 'stop' || stopAfterTurn) { stopAfterTurn = false; break; }
       }
     } finally { busy = false; if (body.isConnected) startBtn.textContent = '🎙️ Start listening'; }
   };
@@ -73,8 +89,14 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
     if (activeSession) { activeSession.stop(); return; }
     if (busy) { stopLoop = true; return; }
     if (handsFreeEnabled()) void conversationLoop();
-    else { busy = true; void run(body, ui, alive, close).finally(() => { busy = false; }); }
+    else {
+      busy = true;
+      void run(body, ui, alive, close)
+        .catch((e) => reportCrash(e, 'try again, or type instead.'))
+        .finally(() => { busy = false; });
+    }
   });
+  wireKeyField(body, ui, 'as', () => openAssistant(sheetRoot, ui));
   if (handsFreeEnabled()) void conversationLoop();
   (sheetRoot.querySelector('.sheet-head button') as HTMLButtonElement).focus();
 }
@@ -99,8 +121,9 @@ function offerVoiceConfirm(body: HTMLElement, alive: () => boolean, question: st
 }
 
 /** One utterance: Done ends it early; the status previews heard text. In
-    hands-free the pause gate is shorter so turns feel continuous. */
-async function listenUtterance(body: HTMLElement, start: HTMLButtonElement, hint: string): Promise<string | null> {
+    hands-free the pause gate is shorter so turns feel continuous. The error
+    code names the failure when no text was heard. */
+async function listenUtterance(body: HTMLElement, start: HTMLButtonElement, hint: string): Promise<{ text: string | null; error: string | null }> {
   const idleLabel = '🎙️ Start listening';
   const session = startListeningUntilDone({
     silenceMs: handsFreeEnabled() ? 3000 : 5000,
@@ -108,9 +131,11 @@ async function listenUtterance(body: HTMLElement, start: HTMLButtonElement, hint
   });
   activeSession = session; start.disabled = false; start.textContent = '⏺ Done';
   const out = await session.done;
+  // Guarded: a hot-reloaded tab can briefly mix module versions.
+  const error = typeof session.lastError === 'function' ? session.lastError() : null;
   activeSession = null;
   if (body.isConnected) { start.textContent = idleLabel; start.disabled = false; }
-  return out;
+  return { text: out, error: out ? null : error };
 }
 
 /** Read-only lookup card for `where` and the ambiguous follow-up. True if matched. */
@@ -133,7 +158,8 @@ async function run(
     ? 'Listening… speak naturally. Say “that’s it for now” to stop, or tap ⏹ Stop.'
     : 'Listening… speak naturally. Tap ⏺ Done, say “that’s it”, or pause ~5 seconds when finished.');
   const t0 = Date.now();
-  let heard = await listenUtterance(body, start, 'Listening… speak naturally.');
+  const first = await listenUtterance(body, start, 'Listening… speak naturally.');
+  let heard = first.text;
   if (!alive()) return;
   if (!heard) {
     if (convo && Date.now() - t0 < 5000) nullStreak++; else nullStreak = 0;
@@ -141,7 +167,7 @@ async function run(
       setStatus(body, 'The mic is not responding — tap ⏹ Stop, check permissions, then Start listening.');
       return 'stop';
     }
-    setStatus(body, 'Did not catch that — tap Start listening to try again, or type instead.');
+    setStatus(body, micErrorMessage(first.error));
     ui.toast('Did not catch that — try typing instead.');
     if (convo) await new Promise((r) => setTimeout(r, 800));
     return;
@@ -167,13 +193,14 @@ async function run(
   }
   let intent = resolved.intent;
   const live = resolved.live;
+  const direct = resolved.direct;
 
   if (intent.kind === 'ambiguous') {
     const question = `“${intent.text}” — should I add that as new, or look it up?`;
     setStatus(body, question);
     await speakAndWait(question);
     if (!alive()) return;
-    const follow = await listenUtterance(body, start, 'Say “add it” or “look it up”…');
+    const follow = (await listenUtterance(body, start, 'Say “add it” or “look it up”…')).text;
     if (!alive()) return;
     if (follow && /^(look|find|search|where|check|show)/i.test(follow.trim())) {
       const found = showLookup(body, intent.text);
@@ -234,7 +261,7 @@ async function run(
       await speakAndWait(question);
       if (!alive()) return;
       setStatus(body, 'Listening for a name… tap ⏺ Done when finished.');
-      const follow = await listenUtterance(body, start, 'Listening for a name…');
+      const follow = (await listenUtterance(body, start, 'Listening for a name…')).text;
       if (!alive()) return;
       if (!follow) { setStatus(body, 'No name heard — routine not created.'); return; }
       name = follow;
@@ -304,7 +331,7 @@ async function run(
       if (!upcoming.length) { speak(question); return; }
       await speakAndWait(question);
       if (!alive()) return;
-      const follow = await listenUtterance(body, start, 'Say the outing name…');
+      const follow = (await listenUtterance(body, start, 'Say the outing name…')).text;
       if (!alive()) return;
       if (follow) event = matchEvent(follow, store.state);
     } else if (event && !routine) {
@@ -313,7 +340,7 @@ async function run(
       setStatus(body, question);
       await speakAndWait(question);
       if (!alive()) return;
-      const follow = await listenUtterance(body, start, 'Say the routine name…');
+      const follow = (await listenUtterance(body, start, 'Say the routine name…')).text;
       if (!alive()) return;
       if (follow) routine = matchRoutine(follow, store.state);
     }
@@ -475,7 +502,7 @@ async function run(
     await speakAndWait(prompt);
     if (!alive()) return;
     setStatus(body, 'Listening for your answer… tap ⏺ Done when finished (or say “skip”, then Done).');
-    const answer = await listenUtterance(body, start, 'Listening for your answer…');
+    const answer = (await listenUtterance(body, start, 'Listening for your answer…')).text;
     if (!alive()) return;
     if (answer && !/^skip\b/i.test(answer)) p = applySlotAnswer(p, slot, answer);
   }
@@ -483,7 +510,7 @@ async function run(
   setStatus(body, summarizeProposal(p));
   showProposal(body, ui, capture.id, {
     proposal: p,
-    label: live ? LIVE_LABEL : undefined,
+    label: direct ? DIRECT_LABEL : live ? LIVE_LABEL : undefined,
     onFinished: (final, outcome) => {
       if (outcome === 'confirmed') speak(summarizeCreated(final));
       if (!handsFreeEnabled()) close();

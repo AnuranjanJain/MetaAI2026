@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTranscript, chunkForSpeech, isConversationEnd, parseConfirmAnswer, stripConversationEnd, stripTrailingStopPhrase } from '../src/voice.js';
+import { createTranscript, chunkForSpeech, isConversationEnd, micErrorMessage, parseConfirmAnswer, stripConversationEnd, stripTrailingStopPhrase } from '../src/voice.js';
 
 describe('createTranscript', () => {
   it('appends final segments across restarts', () => {
@@ -111,6 +111,27 @@ describe('conversation sign-off', () => {
     assert.equal(stripConversationEnd("Add milk, that's it for now"), 'Add milk');
     assert.equal(stripConversationEnd("add milk and that's it for now"), 'add milk');
     assert.equal(stripConversationEnd('stop listening'), '');
+  });
+});
+
+describe('micErrorMessage', () => {
+  it('tells blocked-mic users exactly how to unblock', () => {
+    for (const code of ['not-allowed', 'service-not-allowed']) {
+      const msg = micErrorMessage(code);
+      assert.match(msg, /blocked/i);
+      assert.match(msg, /Allow/);
+    }
+  });
+
+  it('names network and missing-mic failures', () => {
+    assert.match(micErrorMessage('network'), /internet/i);
+    assert.match(micErrorMessage('audio-capture'), /No microphone/i);
+  });
+
+  it('falls back to a generic retry note for silence and unknowns', () => {
+    for (const code of ['no-speech', 'aborted', 'weird-code', null]) {
+      assert.match(micErrorMessage(code), /Did not catch that/);
+    }
   });
 });
 

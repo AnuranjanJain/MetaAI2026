@@ -31,10 +31,14 @@ written — nothing below is invented:
 - Instruction messages use the `developer` role (verified in the Chat
   Completions guide); `reasoning_effort: "none"` returns HTTP 400 on Muse
   Spark, so the proxy sends no reasoning parameter
+- Image input (verified 2026-11-01 in the Image understanding guide): Chat
+  Completions wraps the image in an `image_url` object whose `url` is a
+  public URL or a base64 `data:` URL — no hosting or Files API needed
 
 Sources: `https://dev.meta.ai/docs/models`,
 `https://dev.meta.ai/docs/protocols/chat-completions`,
-`https://dev.meta.ai/docs/authentication` (all fetched 2026-11-01).
+`https://dev.meta.ai/docs/authentication`,
+`https://dev.meta.ai/docs/image-understanding` (all fetched 2026-11-01).
 
 ## Live-mode shape (Muse speech understanding via Vercel proxy)
 
@@ -45,6 +49,11 @@ behind a server route hosted on Vercel:
   `{ transcript }`, calls the Muse endpoint above with a fixed
   server-side extraction prompt, and returns a validated `AssistantIntent`
   matching the app's `classifyIntent` result shape.
+- `POST {sibling}/api/tag-photo` (`api/tag-photo.ts`) receives
+  `{ image }` (JPEG data URL, ≤2M chars), sends it as an `image_url`
+  block with a fixed tagging prompt, and returns `{ pieces }` — each
+  `{ name, category, color?, tags }`, at most 12. Only called from the
+  wardrobe's explicit Detect tap; drafts stay editable and confirm-gated.
 - Browser speech-to-text stays as-is; only the transcript crosses the
   network. Empty and overlong (>1000 chars) transcripts are rejected at
   the boundary with 400/413.
@@ -70,17 +79,37 @@ behind a server route hosted on Vercel:
 
 ## Key handling
 
-- The Meta Model API key lives ONLY as `MUSE_API_KEY` in the Vercel
+- The shared Meta Model API key lives ONLY as `MUSE_API_KEY` in the Vercel
   dashboard (server secret). Its value is the `MODEL_API_KEY` credential
   from the dev.meta.ai dashboard; the `MUSE_` name marks it as this
   app's server secret.
-- The key is read via `process.env` inside `api/interpret.ts` only. It
+- The shared key is read via `process.env` inside `api/*.ts` only. It
   never enters the repo, the bundle, chat, or commits.
 - The client build receives only the proxy URL: `VITE_MUSE_PROXY_URL`
   flows from a GitHub Actions secret through `.github/workflows/deploy.yml`
   into `import.meta.env`. Without it, live mode stays off.
 - Verify with: `npm run build`, then grep `dist/` for `MUSE_API_KEY` /
   `MODEL_API_KEY` — expect zero matches.
+
+## BYOK concept (advanced features on the user's key)
+
+API-powered features are gated behind an optional user-supplied Muse key
+("Use my own Muse key" in the assistant and wardrobe views), while
+everything else works fully offline as usual:
+
+- Advanced, key-gated: voice understanding, garment detection from
+  wardrobe photos, and future API features (general object identification
+  is the planned next one).
+- Always offline: planning, scheduling, storage spots, wardrobe catalog
+  and suggestions, music, and all confirm-gated mutations.
+
+Precedence per request is user-key direct → proxy → local/hand-tag,
+degrading silently at each step. The key is stored only in the browser's
+`localStorage` (per-origin), never displayed back, sent only to
+`api.meta.ai` (browser CORS verified `*` via live preflight probe), and
+cleared with one tap. Tradeoff: page scripts can read `localStorage`, so
+shared devices should prefer the proxy path. Direct results carry their
+own `Direct Muse …` labels, never proxy or demo copy.
 
 ## Demo vs live separation
 

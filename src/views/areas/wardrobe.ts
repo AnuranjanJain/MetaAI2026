@@ -4,7 +4,10 @@
 import { store } from '../../store.js';
 import { createId, nowIso, todayKey } from '../../core/model.js';
 import { DEMO_LABEL, occasionFromEvent, suggestOutfits } from '../../core/inference.js';
-import { PHOTO_ITEM_CAP, PHOTO_LABEL, draftsToClothing, makeDraft, photoItemCount } from '../../core/wardrobeVision.js';
+import { PHOTO_DIRECT_LABEL, PHOTO_ITEM_CAP, PHOTO_LABEL, PHOTO_LIVE_LABEL, draftsFromPieces, draftsToClothing, makeDraft, photoItemCount } from '../../core/wardrobeVision.js';
+import { liveModeActive, tagPhotoDirect, tagPhotoViaMuse } from '../../core/liveModel.js';
+import { getKey, hasKey } from '../../core/byok.js';
+import { keyFieldHtml, wireKeyField } from '../key.js';
 import { readImageDataUrl, validateImageFile } from '../../image.js';
 import type { Clothing, ClothingState, DetectedClothing, Id } from '../../core/types.js';
 import { esc, type Ui } from '../../shell.js';
@@ -15,6 +18,8 @@ let occasion = 'class';
 // across re-renders until the user confirms or leaves them behind.
 let photoUrl: string | undefined;
 let photoDrafts: DetectedClothing[] = [];
+let photoVia: 'direct' | 'proxy' | null = null;
+let detecting = false;
 
 export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: boolean }): void {
   const s = store.state;
@@ -50,15 +55,17 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
         <input type="text" id="wd-tags" placeholder="Tags: work, casual…" style="flex:2;min-width:140px" />
         <button class="btn soft small" id="wd-add">Add</button></div></div>
     <div class="card"><h3>Add from photo</h3>
-      <div class="demo-note">${esc(PHOTO_LABEL)}</div>
+      <div class="demo-note">${esc(photoVia === 'direct' ? PHOTO_DIRECT_LABEL : photoVia ? PHOTO_LIVE_LABEL : PHOTO_LABEL)}</div>
+      ${keyFieldHtml('wd')}
       <p><label class="field">Wardrobe photo<input type="file" id="wd-photo" accept="image/*" /></label></p>
       ${photoUrl ? `<img src="${photoUrl}" alt="Your wardrobe photo" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px" />
         ${photoDrafts.map((d, i) => draftRow(d, i)).join('')}
         <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">
+          <button class="btn soft small" id="wd-detect" ${detecting ? 'disabled' : ''}>${detecting ? 'Detecting…' : 'Detect pieces'}</button>
           <button class="btn soft small" id="wd-draft-add">+ Add a piece</button>
           <button class="btn plain small" id="wd-draft-save">Save confirmed pieces</button>
         </div>` : '<p class="meta">Pick a photo of your wardrobe, then tag the pieces in it.</p>'}
-      <p class="meta">${photoItemCount(s.clothing)}/${PHOTO_ITEM_CAP} photo-backed pieces. The downscaled photo is attached to each piece you save and never leaves this device.</p>
+      <p class="meta">${photoItemCount(s.clothing)}/${PHOTO_ITEM_CAP} photo-backed pieces. ${photoVia === 'direct' ? 'This photo was sent to the Muse API with your key when you tapped Detect — the downscaled copy is attached to each piece you save.' : photoVia ? 'This photo was sent to the proxy for detection when you tapped Detect — the downscaled copy is attached to each piece you save.' : 'The downscaled photo is attached to each piece you save and never leaves this device.'}</p>
     </div>
     <div class="card"><h3>Suggest for an occasion</h3>
       <div class="demo-note">${DEMO_LABEL} for outfit ideas. Only available catalog items are used.</div>
@@ -136,9 +143,36 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
     try {
       photoUrl = await readImageDataUrl(file, { maxDim: 480, quality: 0.72 });
       photoDrafts = [makeDraft()];
+      photoVia = null;
       renderWardrobe(body, ui, {});
     } catch { ui.toast('Could not read that photo.'); }
   });
+  body.querySelector('#wd-detect')?.addEventListener('click', async () => {
+    if (!photoUrl || detecting) return;
+    const via = hasKey() ? 'direct' : liveModeActive() ? 'proxy' : null;
+    if (!via) {
+      ui.toast('Detection needs your Muse key or live mode on.');
+      return;
+    }
+    syncDraftsFromDom(body);
+    detecting = true;
+    renderWardrobe(body, ui, {});
+    try {
+      const pieces = via === 'direct'
+        ? await tagPhotoDirect(photoUrl, getKey() ?? '')
+        : await tagPhotoViaMuse(photoUrl);
+      if (!body.isConnected) return;
+      if (!pieces) { ui.toast('Detection unavailable — tag by hand.'); return; }
+      if (!pieces.length) { ui.toast('No garments found — tag by hand.'); return; }
+      photoDrafts = draftsFromPieces(pieces);
+      photoVia = via;
+      ui.toast(`Detected ${pieces.length} piece${pieces.length === 1 ? '' : 's'} — edit and confirm what you keep.`);
+    } finally {
+      detecting = false;
+      if (body.isConnected) renderWardrobe(body, ui, {});
+    }
+  });
+  wireKeyField(body, ui, 'wd', () => renderWardrobe(body, ui, {}));
   body.querySelector('#wd-draft-add')?.addEventListener('click', () => {
     syncDraftsFromDom(body);
     photoDrafts.push(makeDraft());
@@ -162,6 +196,7 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
     store.update((d) => { d.clothing.push(...items); });
     photoUrl = undefined;
     photoDrafts = [];
+    photoVia = null;
     ui.sound('wardrobe');
     ui.toast(`Saved ${items.length} piece${items.length === 1 ? '' : 's'} from your photo.`,
       { action: 'Undo', onAction: () => { store.undo(); renderWardrobe(body, ui, {}); } });

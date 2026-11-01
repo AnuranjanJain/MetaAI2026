@@ -35,9 +35,9 @@ More screenshots (planner, wardrobe photo) coming soon.
 - **Desk captures** — drop a note or screenshot; an on-device interpretation proposes
   a task/event/item, you edit and confirm. Every proposal path shows its honesty label.
 - **Wardrobe + photos** — catalog your clothes, then "Add from photo": upload a
-  wardrobe picture, hand-tag the pieces you see, confirm only what you want.
-  Explicitly labelled: *no detection runs on this device yet*. Event-aware outfit
-  suggestions (*"Today — from your events"*).
+  wardrobe picture, tap Detect for live Muse drafts (live mode only, explicit
+  tap) or hand-tag the pieces yourself, confirm only what you want.
+  Event-aware outfit suggestions (*"Today — from your events"*).
 - **Storage spots** — every belonging has a last-recorded spot; ambiguous matches are
   shown, never guessed.
 - **Record player** 🎵 — eight original WebAudio synth loops (no files, no network,
@@ -58,7 +58,7 @@ More screenshots (planner, wardrobe photo) coming soon.
 | Voice in/out | Browser Web Speech API (`SpeechRecognition` + `speechSynthesis`), feature-detected |
 | Music/SFX | WebAudio — synthesized loops + UI motifs, zero audio files |
 | Images | Canvas-downscaled JPEG data URLs (quota-safe local persistence) |
-| Tests | `node:test` + `tsx` — 117 tests, pure logic in `src/core/` |
+| Tests | `node:test` + `tsx` — 152 tests, pure logic in `src/core/` |
 | Backend (optional) | Vercel serverless proxy (`api/interpret.ts`) → Muse API (`muse-spark-1.3`), key in Vercel server secret only |
 
 ## Usage
@@ -68,7 +68,7 @@ Prereqs: Node 18+.
 ```bash
 npm install
 npm run dev      # http://127.0.0.1:5173 — localhost is a secure context, so the mic works here
-npm test         # 117 tests across assistant / planner / wardrobe / scheduling / live adapter
+npm test         # 152 tests across assistant / planner / wardrobe / scheduling / live adapter
 npm run build    # tsc --noEmit && vite build → dist/
 npm run preview  # serve the production build locally
 ```
@@ -79,11 +79,12 @@ Notes:
   hides itself and typing always works). Mic permission denied → graceful toast.
 - Your data never leaves the device. No accounts, no tracking, no network calls
   in the local build. Clearing site data wipes the room.
-- Cloud AI stays fully optional: live Muse speech understanding is a
-  `localStorage` opt-in (`pocketroom.liveMuse`) plus a `VITE_MUSE_PROXY_URL`
-  build secret. If the backend is off or unreachable, the app silently uses
-  the complete local product. The Muse key lives only in the Vercel
-  dashboard — never the repo or bundle (see `docs/integrations.md`).
+- Cloud AI stays fully optional: use your own Muse key in-app (BYOK, stored
+  only in your browser), or the hosted proxy via a `localStorage` opt-in
+  (`pocketroom.liveMuse`) plus a `VITE_MUSE_PROXY_URL` build secret. If no
+  key path works, the app silently uses the complete local product. The
+  shared Muse key lives only in the Vercel dashboard — never the repo or
+  bundle (see `docs/integrations.md`).
 
 ## Project structure
 

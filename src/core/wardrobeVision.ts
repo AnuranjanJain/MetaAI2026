@@ -12,6 +12,33 @@ export const PHOTO_LABEL =
   'On-device scaffold — no detection runs on this device yet; ' +
   'tag each piece yourself. Nothing is saved until you confirm.';
 
+export const PHOTO_LIVE_LABEL =
+  'Live Muse detection — drafts from your photo, edit and confirm what you keep.';
+
+export const PHOTO_DIRECT_LABEL =
+  'Direct Muse detection — your key, this browser. Edit and confirm what you keep.';
+
+/** One validated garment from the live tag-photo route. Structural so the
+    client adapter needs no import to return it. */
+export interface PhotoPiece {
+  name: string;
+  category: Clothing['category'];
+  color?: string;
+  tags: readonly string[];
+}
+
+/** Shape live pieces into included drafts with fresh ids, capped. */
+export function draftsFromPieces(pieces: readonly PhotoPiece[]): DetectedClothing[] {
+  return pieces.slice(0, PHOTO_ITEM_CAP).map((p) =>
+    makeDraft({
+      name: p.name.trim(),
+      category: p.category,
+      color: p.color?.trim() || undefined,
+      tags: normalizeTags(p.tags),
+    }),
+  );
+}
+
 export function makeDraft(partial: Partial<DetectedClothing> = {}): DetectedClothing {
   return {
     id: createId('det'),

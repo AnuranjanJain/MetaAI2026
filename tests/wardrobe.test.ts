@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { draftsToClothing, makeDraft, normalizeTags, photoItemCount } from '../src/core/wardrobeVision.js';
+import { PHOTO_DIRECT_LABEL, PHOTO_ITEM_CAP, draftsFromPieces, draftsToClothing, makeDraft, normalizeTags, photoItemCount } from '../src/core/wardrobeVision.js';
 import { occasionFromEvent } from '../src/core/inference.js';
 
 describe('draftsToClothing', () => {
@@ -40,6 +40,31 @@ describe('draftsToClothing', () => {
     assert.equal(d.include, true);
     assert.equal(d.name, '');
     assert.equal(d.category, 'top');
+  });
+});
+
+describe('draftsFromPieces', () => {
+  it('shapes live pieces into included drafts with fresh ids', () => {
+    const drafts = draftsFromPieces([
+      { name: 'Blue hoodie', category: 'top', color: 'blue', tags: ['Casual', 'casual'] },
+      { name: 'White sneakers', category: 'shoes', tags: [] },
+    ]);
+    assert.equal(drafts.length, 2);
+    assert.equal(drafts[0].name, 'Blue hoodie');
+    assert.equal(drafts[0].color, 'blue');
+    assert.equal(drafts[0].include, true);
+    assert.deepEqual(drafts[0].tags, ['casual']);
+    assert.notEqual(drafts[0].id, drafts[1].id);
+  });
+
+  it('caps drafts at the photo item cap', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ name: `P${i}`, category: 'top' as const, tags: [] }));
+    assert.equal(draftsFromPieces(many).length, PHOTO_ITEM_CAP);
+  });
+
+  it('names direct detection distinctly', () => {
+    assert.match(PHOTO_DIRECT_LABEL, /Direct Muse detection/);
+    assert.doesNotMatch(PHOTO_DIRECT_LABEL, /demo/i);
   });
 });
 

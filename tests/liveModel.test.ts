@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  LIVE_INTRO, LIVE_LABEL, interpretViaMuse, liveModeActive, liveModeEnabled, proxyConfigured, resolveIntent,
+  DIRECT_LABEL, LIVE_INTRO, LIVE_LABEL, interpretDirect, interpretViaMuse, liveModeActive, liveModeEnabled, proxyConfigured, proxySibling, resolveIntent, tagPhotoDirect, tagPhotoViaMuse,
 } from '../src/core/liveModel.js';
 import { emptyState } from '../src/core/model.js';
 
@@ -38,11 +38,14 @@ function stubFetch(opts: StubOpts = {}): typeof fetch {
 
 const VALID_WHERE = { kind: 'where', query: 'adapter', reason: 'Live Muse interpretation — test.' };
 
-/** Run with a stubbed localStorage opt-in, restored afterwards. */
+/** Run with a stubbed localStorage opt-in (key slot empty), restored afterwards. */
 function withLiveMode<T>(on: boolean, fn: () => Promise<T>): Promise<T> {
   const g = globalThis as { localStorage?: unknown };
   const prev = g.localStorage;
-  g.localStorage = { getItem: () => (on ? '1' : '0'), setItem: () => {} };
+  g.localStorage = {
+    getItem: (k: string) => (k === 'pocketroom.liveMuse' ? (on ? '1' : '0') : null),
+    setItem: () => {},
+  };
   return fn().finally(() => {
     if (prev === undefined) delete g.localStorage;
     else g.localStorage = prev;
@@ -168,6 +171,161 @@ describe('client-side boundaries', () => {
     });
     assert.equal(intent, null);
     assert.equal(calls.n, 0);
+  });
+});
+
+describe('proxySibling', () => {
+  it('derives the tag-photo path from the interpret URL', () => {
+    assert.equal(
+      proxySibling('https://proxy.test/api/interpret', 'tag-photo'),
+      'https://proxy.test/api/tag-photo',
+    );
+  });
+
+  it('returns null without a usable base URL', () => {
+    assert.equal(proxySibling(null, 'tag-photo'), null);
+    assert.equal(proxySibling('', 'tag-photo'), null);
+    assert.equal(proxySibling('https://proxy.test', 'tag-photo'), null);
+  });
+});
+
+describe('tagPhotoViaMuse', () => {
+  const IMG = 'data:image/jpeg;base64,/9j/4AAQ';
+  const TAG_URL = 'https://proxy.test/api/tag-photo';
+  const VALID = { pieces: [{ name: 'Blue hoodie', category: 'top', color: 'blue', tags: ['casual'] }] };
+
+  it('passes valid pieces through untouched', async () => {
+    const pieces = await tagPhotoViaMuse(IMG, { proxyUrl: TAG_URL, fetchFn: stubFetch({ body: VALID }) });
+    assert.deepEqual(pieces, VALID.pieces);
+  });
+
+  it('accepts an empty pieces array (no garments is a valid answer)', async () => {
+    const pieces = await tagPhotoViaMuse(IMG, { proxyUrl: TAG_URL, fetchFn: stubFetch({ body: { pieces: [] } }) });
+    assert.deepEqual(pieces, []);
+  });
+
+  const bad: Array<[string, unknown]> = [
+    ['pieces not an array', { pieces: {} }],
+    ['missing name', { pieces: [{ category: 'top', tags: [] }] }],
+    ['empty name', { pieces: [{ name: '  ', category: 'top', tags: [] }] }],
+    ['bad category', { pieces: [{ name: 'X', category: 'hat', tags: [] }] }],
+    ['missing tags', { pieces: [{ name: 'X', category: 'top' }] }],
+    ['non-string tag', { pieces: [{ name: 'X', category: 'top', tags: [1] }] }],
+    ['color wrong type', { pieces: [{ name: 'X', category: 'top', color: 5, tags: [] }] }],
+    ['extra piece key', { pieces: [{ name: 'X', category: 'top', tags: [], price: 9 }] }],
+    ['extra top-level key', { pieces: [], model: 'x' }],
+    ['too many pieces', { pieces: Array.from({ length: 13 }, () => ({ name: 'X', category: 'top', tags: [] })) }],
+    ['null body', null],
+  ];
+  for (const [name, body] of bad) {
+    it(`rejects malformed responses (${name})`, async () => {
+      const pieces = await tagPhotoViaMuse(IMG, { proxyUrl: TAG_URL, fetchFn: stubFetch({ body }) });
+      assert.equal(pieces, null);
+    });
+  }
+
+  it('rejects error statuses, failures, and hangs', async () => {
+    assert.equal(await tagPhotoViaMuse(IMG, { proxyUrl: TAG_URL, fetchFn: stubFetch({ status: 502, body: VALID }) }), null);
+    assert.equal(await tagPhotoViaMuse(IMG, { proxyUrl: TAG_URL, fetchFn: stubFetch({ throws: new Error('down') }) }), null);
+    const t0 = Date.now();
+    assert.equal(await tagPhotoViaMuse(IMG, { proxyUrl: TAG_URL, fetchFn: stubFetch({ hang: true }), timeoutMs: 30 }), null);
+    assert.ok(Date.now() - t0 < 5000, 'timed out promptly');
+  });
+
+  it('never calls the proxy without a data-URL image', async () => {
+    const calls = { n: 0 };
+    const opts = { proxyUrl: TAG_URL, fetchFn: stubFetch({ body: VALID, calls }) };
+    assert.equal(await tagPhotoViaMuse('', opts), null);
+    assert.equal(await tagPhotoViaMuse('https://example.com/pic.jpg', opts), null);
+    assert.equal(await tagPhotoViaMuse(`data:image/jpeg;base64,${'x'.repeat(2000000)}`, opts), null);
+    assert.equal(await tagPhotoViaMuse(IMG, { proxyUrl: '', fetchFn: stubFetch({ body: VALID, calls }) }), null);
+    assert.equal(calls.n, 0);
+  });
+});
+
+describe('direct mode (user key)', () => {
+  const PROXY_URL = 'https://proxy.test/api/interpret';
+  const DIRECT_WHERE = { choices: [{ message: { content: JSON.stringify(VALID_WHERE) } }] };
+  const DIRECT_WHERE_RESULT = {
+    kind: 'where', query: 'adapter',
+    reason: 'Direct Muse interpretation — searching your recorded spots, nothing added.',
+  };
+
+  function captureStub(body: unknown): { headers: unknown[]; fetch: typeof fetch } {
+    const headers: unknown[] = [];
+    const stub = (async (_url: unknown, init?: { headers?: unknown }) => {
+      headers.push(init?.headers);
+      return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
+    }) as unknown as typeof fetch;
+    return { headers, fetch: stub };
+  }
+
+  it('labels direct results distinctly', () => {
+    assert.match(DIRECT_LABEL, /Direct Muse interpretation/);
+    assert.doesNotMatch(DIRECT_LABEL, /demo/i);
+    assert.notEqual(DIRECT_LABEL, LIVE_LABEL);
+  });
+
+  it('sends the key as a Bearer token and attaches a direct reason', async () => {
+    const cap = captureStub(DIRECT_WHERE);
+    const intent = await interpretDirect('where is my adapter', 'sk-test', { fetchFn: cap.fetch });
+    assert.deepEqual(intent, DIRECT_WHERE_RESULT);
+    assert.deepEqual(cap.headers, [{ 'Content-Type': 'application/json', Authorization: 'Bearer sk-test' }]);
+  });
+
+  it('returns null on rejected keys and malformed replies', async () => {
+    assert.equal(await interpretDirect('hi', 'sk-bad', { fetchFn: stubFetch({ status: 401, body: {} }) }), null);
+    assert.equal(await interpretDirect('hi', 'sk-test', { fetchFn: stubFetch({ body: { choices: [] } }) }), null);
+    assert.equal(await interpretDirect('', 'sk-test', { fetchFn: stubFetch({ body: DIRECT_WHERE }) }), null);
+  });
+
+  it('tags photos directly with the same validation', async () => {
+    const img = 'data:image/jpeg;base64,/9j/4AAQ';
+    const pieces = [{ name: 'Tee', category: 'top', tags: [] }];
+    const direct = { choices: [{ message: { content: JSON.stringify(pieces) } }] };
+    assert.deepEqual(await tagPhotoDirect(img, 'sk-test', { fetchFn: stubFetch({ body: direct }) }), pieces);
+    assert.equal(await tagPhotoDirect(img, 'sk-bad', { fetchFn: stubFetch({ status: 401, body: {} }) }), null);
+    assert.equal(await tagPhotoDirect('not-a-data-url', 'sk-test', { fetchFn: stubFetch({ body: direct }) }), null);
+  });
+
+  it('prefers direct, then proxy, then local', async () => {
+    const g = globalThis as { localStorage?: unknown };
+    const prev = g.localStorage;
+    const store = new Map<string, string>([['pocketroom.liveMuse', '1'], ['pocketroom.museKey', 'sk-test']]);
+    g.localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, v); },
+      removeItem: (k: string) => { store.delete(k); },
+    };
+    try {
+      const route = (directBody: unknown, directStatus = 200) =>
+        (async (url: unknown) => {
+          const direct = String(url).includes('api.meta.ai');
+          const status = direct ? directStatus : 200;
+          return {
+            ok: status >= 200 && status < 300, status,
+            json: async () => (direct ? directBody : VALID_WHERE),
+          };
+        }) as unknown as typeof fetch;
+      const directOk = await resolveIntent('where is my adapter', emptyState(), {
+        proxyUrl: PROXY_URL, fetchFn: route(DIRECT_WHERE),
+      });
+      assert.notEqual(directOk, 'empty');
+      if (directOk === 'empty') throw new Error('expected intent');
+      assert.equal(directOk.live, true);
+      assert.equal(directOk.direct, true);
+
+      const proxyFallback = await resolveIntent('where is my adapter', emptyState(), {
+        proxyUrl: PROXY_URL, fetchFn: route({}, 401),
+      });
+      assert.notEqual(proxyFallback, 'empty');
+      if (proxyFallback === 'empty') throw new Error('expected intent');
+      assert.equal(proxyFallback.live, true);
+      assert.equal(proxyFallback.direct, false);
+    } finally {
+      if (prev === undefined) delete g.localStorage;
+      else g.localStorage = prev;
+    }
   });
 });
 
