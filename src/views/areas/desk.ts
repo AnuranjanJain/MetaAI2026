@@ -4,11 +4,14 @@
 
 import { store } from '../../store.js';
 import { applyProposal, createId, nowIso } from '../../core/model.js';
+import { splitLocationHint, matchLocationHint } from '../../core/assistant.js';
 import { DEMO_LABEL, propose, validateProposal } from '../../core/inference.js';
-import { listenOnce, voiceInputSupported } from '../../voice.js';
+import { startListeningUntilDone, voiceInputSupported, type ListeningSession } from '../../voice.js';
 import { readImageDataUrl, validateImageFile } from '../../image.js';
 import type { Capture, Id, Proposal } from '../../core/types.js';
 import { esc, type Ui } from '../../shell.js';
+
+let dictating: ListeningSession | null = null;
 
 export function renderDesk(body: HTMLElement, ui: Ui, opts: { focusAdd?: boolean }): void {
   const s = store.state;
@@ -70,9 +73,14 @@ export function renderDesk(body: HTMLElement, ui: Ui, opts: { focusAdd?: boolean
 
   body.querySelector<HTMLButtonElement>('#cap-mic')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget as HTMLButtonElement;
-    btn.disabled = true; btn.textContent = '⏺️ Listening…';
-    const heard = await listenOnce({});
-    btn.disabled = false; btn.textContent = '🎙️ Dictate';
+    if (dictating) { dictating.stop(); return; }
+    const session = startListeningUntilDone({});
+    dictating = session;
+    btn.textContent = '⏺️ Done';
+    const heard = await session.done;
+    dictating = null;
+    if (!body.isConnected) return;
+    btn.textContent = '🎙️ Dictate';
     if (!heard) { ui.toast('Did not catch that — try typing instead.'); return; }
     const box = body.querySelector<HTMLTextAreaElement>('#cap-text')!;
     box.value = box.value ? `${box.value.trim()} ${heard}` : heard;
@@ -108,6 +116,13 @@ export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: Sho
   if (!c) return;
   const p = opts.proposal ?? propose(c.text, c.kind === 'image');
   const label = opts.label ?? DEMO_LABEL;
+  // Voice-style "passport in top drawer": pre-select the hinted spot on
+  // item proposals so Confirm places the belonging immediately.
+  if (p.type === 'item' && !p.locationHint) {
+    const { hint } = splitLocationHint(c.text || p.title);
+    const spot = hint ? matchLocationHint(hint, store.state) : null;
+    if (spot) p.locationHint = spot.name;
+  }
   host.innerHTML = `
     <div class="card" style="border-color:var(--terra)">
       <h3>Confirm before creating <span class="pill terra">${p.confidence} confidence</span></h3>
@@ -155,7 +170,7 @@ export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: Sho
       return;
     }
     const cap = store.state.captures.find((x) => x.id === captureId)!;
-    const { task, event, belonging, capture } = applyProposal(cap, p);
+    const { task, event, belonging, capture } = applyProposal(cap, p, store.state.locations);
     store.update((d) => {
       const i = d.captures.findIndex((x) => x.id === captureId);
       if (i >= 0) d.captures[i] = capture;
@@ -187,6 +202,12 @@ function paintFields(host: Element, p: Proposal): void {
   }
   if (p.type === 'item') {
     html += f('Item name', `<input type="text" data-f="itemName" value="${esc(p.itemName ?? p.title)}" />`);
+    const spots = store.state.locations;
+    const hint = (p.locationHint ?? '').toLowerCase();
+    html += f('Spot (optional)', `<select data-f="spot">
+      <option value="">Not sure yet</option>
+      ${spots.map((l) => `<option value="${esc(l.name)}" ${l.name.toLowerCase() === hint ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}
+    </select>`);
     html += f('Description (optional)', `<input type="text" data-f="prep" value="${esc(p.prep ?? '')}" />`);
   }
   host.innerHTML = html;
@@ -208,6 +229,7 @@ function readFields(host: Element, p: Proposal): void {
   }
   if (p.type === 'item') {
     p.itemName = get('itemName') || p.title;
+    p.locationHint = get('spot')?.trim() || undefined;
     p.prep = get('prep') || undefined;
   }
 }

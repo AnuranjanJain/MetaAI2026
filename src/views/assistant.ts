@@ -3,16 +3,17 @@
 // or completed from voice alone; every mutation waits for a tap on Confirm.
 
 import { store } from '../store.js';
-import { createId, nowIso } from '../core/model.js';
+import { buildChecklistForEvent, createId, nowIso, todayKey } from '../core/model.js';
 import { applySlotAnswer, missingSlots, propose, searchBelongings, DEMO_LABEL, type ProposalSlot } from '../core/inference.js';
-import { classifyIntent, summarizeCreated, summarizeProposal, whereAnswer } from '../core/assistant.js';
-import { listenOnce, speak, speakAndWait, stopSpeak } from '../voice.js';
+import { classifyIntent, deskSummary, findRenamable, haveAnswer, matchEvent, matchRoutine, summarizeCreated, summarizeProposal, wardrobeAnswer, wearPick, whereAnswer } from '../core/assistant.js';
+import { speak, speakAndWait, startListeningUntilDone, stopSpeak, stripTrailingStopPhrase, type ListeningSession } from '../voice.js';
 import { showProposal } from './areas/desk.js';
 import { nextCommitment } from './room.js';
 import { esc, lastStored, type Ui } from '../shell.js';
 import type { Capture, Proposal } from '../core/types.js';
 
 let sessionSeq = 0;
+let activeSession: ListeningSession | null = null;
 
 const SLOT_PROMPTS: Record<ProposalSlot, (p: Proposal) => string> = {
   date: (p) => `What date is ${p.title}?`,
@@ -47,6 +48,8 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
   const alive = () => session === sessionSeq && body.isConnected;
   const close = () => {
     if (session === sessionSeq) sessionSeq++;
+    activeSession?.cancel();
+    activeSession = null;
     stopSpeak();
     sheetRoot.innerHTML = '';
     document.body.classList.remove('sheet-open');
@@ -59,7 +62,41 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
 
 function setStatus(body: HTMLElement, text: string): void {
   const el = body.querySelector('#as-status');
-  if (el) el.textContent = text;
+  if (el) el.textContent = text.length > 220 ? text.slice(0, 220) + '…' : text;
+}
+
+/**
+ * One full utterance through a self-restarting session. The start button
+ * morphs into a Done button while listening; the status line previews what
+ * has been heard so far. Resolves null when nothing usable was heard.
+ */
+async function listenUtterance(body: HTMLElement, start: HTMLButtonElement, hint: string): Promise<string | null> {
+  const idleLabel = '🎙️ Start listening';
+  const session = startListeningUntilDone({
+    onInterim: (text) => { if (body.isConnected) setStatus(body, text ? `Heard: “${text}”` : hint); },
+  });
+  activeSession = session;
+  start.disabled = false;
+  start.textContent = '⏺ Done';
+  const out = await session.done;
+  activeSession = null;
+  if (body.isConnected) {
+    start.textContent = idleLabel;
+    start.disabled = false;
+  }
+  return out;
+}
+
+/** Read-only lookup card shared by the `where` intent and the ambiguous
+    follow-up. Returns true when anything matched. */
+function showLookup(body: HTMLElement, query: string): boolean {
+  const hits = searchBelongings(query, store.state.belongings, store.state.locations).slice(0, 3);
+  const host = body.querySelector('#proposal')!;
+  host.innerHTML = hits.length
+    ? `<div class="card"><h3>Here’s what I have</h3><ul class="clean">${hits.map((h) => `
+        <li><strong>${esc(h.belonging.name)}</strong><br/><span class="loc-note">${esc(lastStored(store.state, h.belonging.id))}</span></li>`).join('')}</ul></div>`
+    : `<div class="card"><h3>Not recorded yet</h3><p class="meta">No stored item matches “${esc(query)}”.</p></div>`;
+  return hits.length > 0;
 }
 
 async function run(
@@ -67,36 +104,292 @@ async function run(
   alive: () => boolean, close: () => void,
 ): Promise<void> {
   const start = body.querySelector<HTMLButtonElement>('#as-start')!;
-  start.disabled = true;
-  setStatus(body, 'Listening… say it in one sentence.');
-  const heard = await listenOnce({});
+  setStatus(body, 'Listening… speak naturally. Tap ⏺ Done, say “that’s it”, or pause ~5 seconds when finished.');
+  const heard = await listenUtterance(body, start, 'Listening… speak naturally.');
   if (!alive()) return;
-  start.disabled = false;
   if (!heard) {
     setStatus(body, 'Did not catch that — tap Start listening to try again, or type instead.');
     ui.toast('Did not catch that — try typing instead.');
     return;
   }
 
-  const intent = classifyIntent(heard, store.state);
+  // Classify the raw text first so a done-command ending in "done" still
+  // matches; only then strip a trailing stop phrase and re-classify.
+  let intent = classifyIntent(heard, store.state);
+  if (intent.kind !== 'done') {
+    const stripped = stripTrailingStopPhrase(heard);
+    if (!stripped) {
+      setStatus(body, 'Okay, all done.');
+      speak('Okay, all done.');
+      return;
+    }
+    if (stripped !== heard) intent = classifyIntent(stripped, store.state);
+  }
+
+  if (intent.kind === 'ambiguous') {
+    const question = `“${intent.text}” — should I add that as new, or look it up?`;
+    setStatus(body, question);
+    await speakAndWait(question);
+    if (!alive()) return;
+    const follow = await listenUtterance(body, start, 'Say “add it” or “look it up”…');
+    if (!alive()) return;
+    if (follow && /^(look|find|search|where|check|show)/i.test(follow.trim())) {
+      const found = showLookup(body, intent.text);
+      const answer = found
+        ? `Here is what matches “${intent.text}”. Nothing added.`
+        : `Nothing recorded matches “${intent.text}”. Nothing added.`;
+      setStatus(body, answer);
+      speak(answer);
+      return;
+    }
+    intent = {
+      kind: 'add', text: intent.text,
+      reason: 'You chose to save it — review before anything is created.',
+    };
+  }
 
   if (intent.kind === 'next') {
     const next = nextCommitment(store.state);
     const answer = next ? `Next up: ${next}.` : 'Nothing else is scheduled today.';
-    setStatus(body, answer);
+    setStatus(body, `${answer} (${intent.reason})`);
     speak(answer);
     return;
   }
 
   if (intent.kind === 'where') {
-    const hits = searchBelongings(intent.query, store.state.belongings, store.state.locations).slice(0, 3);
+    showLookup(body, intent.query);
+    const answer = whereAnswer(intent.query, store.state);
+    setStatus(body, `${answer} (${intent.reason})`);
+    speak(answer);
+    return;
+  }
+
+  if (intent.kind === 'have') {
+    const answer = haveAnswer(intent.query, store.state);
+    setStatus(body, `${answer} (${intent.reason})`);
+    speak(answer);
+    return;
+  }
+
+  if (intent.kind === 'wardrobe') {
+    const answer = wardrobeAnswer(intent.query, store.state);
     const host = body.querySelector('#proposal')!;
-    host.innerHTML = hits.length
-      ? `<div class="card"><h3>Here’s what I have</h3><ul class="clean">${hits.map((h) => `
-          <li><strong>${esc(h.belonging.name)}</strong><br/><span class="loc-note">${esc(lastStored(store.state, h.belonging.id))}</span></li>`).join('')}</ul></div>`
-      : `<div class="card"><h3>Not recorded yet</h3><p class="meta">No stored item matches “${esc(intent.query)}”.</p></div>`;
-    setStatus(body, whereAnswer(intent.query, store.state));
-    speak(whereAnswer(intent.query, store.state));
+    host.innerHTML = `<div class="card"><h3>Wardrobe check</h3>
+      <p class="meta">${esc(answer)}</p>
+      <p><button class="btn plain" id="as-wardrobe">Open wardrobe</button></p></div>`;
+    setStatus(body, `${answer} (${intent.reason})`);
+    speak(answer);
+    host.querySelector('#as-wardrobe')!.addEventListener('click', () => { close(); ui.open('wardrobe', {}); });
+    return;
+  }
+
+  if (intent.kind === 'routine') {
+    let name = intent.name;
+    const host = body.querySelector('#proposal')!;
+    if (!name) {
+      const question = 'What should I call the new routine?';
+      setStatus(body, question);
+      await speakAndWait(question);
+      if (!alive()) return;
+      setStatus(body, 'Listening for a name… tap ⏺ Done when finished.');
+      const follow = await listenUtterance(body, start, 'Listening for a name…');
+      if (!alive()) return;
+      if (!follow) { setStatus(body, 'No name heard — routine not created.'); return; }
+      name = follow;
+    }
+    host.innerHTML = `
+      <div class="card" style="border-color:var(--terra)"><h3>New routine?</h3>
+        <label class="field">Name<input type="text" id="as-rou-name" value="${esc(name)}" /></label>
+        <div class="row"><button class="btn plain" id="as-rou-yes">Create</button>
+        <button class="btn soft" id="as-rou-no">Cancel</button></div></div>`;
+    setStatus(body, `Create the routine “${name}”? (${intent.reason})`);
+    host.querySelector('#as-rou-no')!.addEventListener('click', () => { host.innerHTML = ''; setStatus(body, 'Okay, left as is.'); });
+    host.querySelector('#as-rou-yes')!.addEventListener('click', () => {
+      const final = host.querySelector<HTMLInputElement>('#as-rou-name')!.value.trim() || name;
+      store.update((d) => { d.routines.push({ id: createId('rou'), name: final, belongingIds: [], tasks: [] }); });
+      ui.toast(`Routine “${final}” created. Link items to it in the doorway.`, { action: 'Undo', onAction: () => store.undo() });
+      speak(`Created routine ${final}.`);
+      host.innerHTML = '';
+      setStatus(body, `Created routine “${final}”. Link items to it in the doorway.`);
+    });
+    return;
+  }
+
+  if (intent.kind === 'routineAdd') {
+    const host = body.querySelector('#proposal')!;
+    const routine = matchRoutine(intent.routineQuery, store.state);
+    if (!routine) {
+      const names = store.state.routines.map((r) => r.name).join('; ') || 'none yet';
+      host.innerHTML = `<div class="card"><h3>No routine matches</h3>
+        <p class="meta">Nothing called “${esc(intent.routineQuery)}”. Existing routines: ${esc(names)}. Nothing added.</p></div>`;
+      const answer = `No routine matches “${intent.routineQuery}”. Nothing added.`;
+      setStatus(body, answer);
+      speak(answer);
+      return;
+    }
+    const hits = searchBelongings(intent.itemText, store.state.belongings, store.state.locations);
+    const topScore = hits.length ? hits[0].score : 0;
+    const linked = hits.length && hits.filter((h) => h.score === topScore).length === 1 && topScore >= 2
+      ? hits[0].belonging : null;
+    const what = linked ? `“${linked.name}” (linked stored item)` : `“${intent.itemText}” (new routine task)`;
+    host.innerHTML = `
+      <div class="card" style="border-color:var(--terra)"><h3>Add to “${esc(routine.name)}”?</h3>
+        <p>${esc(what)}</p>
+        <div class="row"><button class="btn plain" id="as-ra-yes">Add</button>
+        <button class="btn soft" id="as-ra-no">Cancel</button></div></div>`;
+    setStatus(body, `Add ${what} to “${routine.name}”? (${intent.reason})`);
+    host.querySelector('#as-ra-no')!.addEventListener('click', () => { host.innerHTML = ''; setStatus(body, 'Okay, left as is.'); });
+    host.querySelector('#as-ra-yes')!.addEventListener('click', () => {
+      store.update((d) => {
+        const r = d.routines.find((x) => x.id === routine.id);
+        if (!r) return;
+        if (linked) { if (!r.belongingIds.includes(linked.id)) r.belongingIds.push(linked.id); }
+        else r.tasks.push({ id: createId('rout'), title: intent.itemText });
+      });
+      ui.toast(`Added to “${routine.name}”.`, { action: 'Undo', onAction: () => store.undo() });
+      speak(`Added to ${routine.name}.`);
+      host.innerHTML = '';
+      setStatus(body, `Added to “${routine.name}”.`);
+    });
+    return;
+  }
+
+  if (intent.kind === 'outing') {
+    const host = body.querySelector('#proposal')!;
+    let routine = matchRoutine(intent.query, store.state);
+    let event = matchEvent(intent.query, store.state);
+    if (routine && !event) {
+      const upcoming = store.state.events.filter((e) => e.date >= todayKey()).slice(0, 5);
+      const question = upcoming.length
+        ? `Which outing is it for — ${upcoming.map((e) => e.title).join(', ')}?`
+        : 'There are no upcoming outings. Add an event first.';
+      setStatus(body, question);
+      if (!upcoming.length) { speak(question); return; }
+      await speakAndWait(question);
+      if (!alive()) return;
+      const follow = await listenUtterance(body, start, 'Say the outing name…');
+      if (!alive()) return;
+      if (follow) event = matchEvent(follow, store.state);
+    } else if (event && !routine) {
+      const names = store.state.routines.map((r) => r.name).join(', ') || 'none yet';
+      const question = `Which routine should I use — ${names}?`;
+      setStatus(body, question);
+      await speakAndWait(question);
+      if (!alive()) return;
+      const follow = await listenUtterance(body, start, 'Say the routine name…');
+      if (!alive()) return;
+      if (follow) routine = matchRoutine(follow, store.state);
+    }
+    if (!routine || !event) {
+      const answer = 'I could not pin down both a routine and an outing. Nothing added.';
+      host.innerHTML = `<div class="card"><h3>Not clear enough</h3><p class="meta">${esc(answer)}</p></div>`;
+      setStatus(body, answer);
+      speak(answer);
+      return;
+    }
+    const labels = buildChecklistForEvent(store.state, event.id, routine.id).map((c) => c.label);
+    if (!labels.length) {
+      const answer = `“${routine.name}” adds nothing new to “${event.title}”.`;
+      setStatus(body, answer);
+      speak(answer);
+      return;
+    }
+    host.innerHTML = `
+      <div class="card" style="border-color:var(--terra)"><h3>Pack for “${esc(event.title)}”?</h3>
+        <p class="meta">From routine “${esc(routine.name)}”: ${esc(labels.join('; '))}</p>
+        <div class="row"><button class="btn plain" id="as-out-yes">Build list</button>
+        <button class="btn soft" id="as-out-no">Cancel</button></div></div>`;
+    setStatus(body, `Build the list for “${event.title}”? (${intent.reason})`);
+    host.querySelector('#as-out-no')!.addEventListener('click', () => { host.innerHTML = ''; setStatus(body, 'Okay, left as is.'); });
+    host.querySelector('#as-out-yes')!.addEventListener('click', () => {
+      const fresh = buildChecklistForEvent(store.state, event!.id, routine!.id);
+      if (!fresh.length) { ui.toast('Nothing new — that list already covers this routine.'); return; }
+      store.update((d) => { d.checklist.push(...fresh); });
+      ui.toast(`Added ${fresh.length} items to the list.`, { action: 'Undo', onAction: () => store.undo() });
+      speak(`Packing list ready for ${event!.title}.`);
+      host.innerHTML = '';
+      setStatus(body, `Packing list ready for “${event!.title}”.`);
+    });
+    return;
+  }
+
+  if (intent.kind === 'rename') {
+    const host = body.querySelector('#proposal')!;
+    const matches = findRenamable(intent.target, store.state);
+    if (matches.length !== 1) {
+      const answer = matches.length
+        ? `“${intent.target}” could be ${matches.map((m) => `“${m.name}” (${m.scope})`).join(', ')} — tap one where it lives. Nothing renamed.`
+        : `Nothing matches “${intent.target}”. Nothing renamed.`;
+      host.innerHTML = `<div class="card"><h3>Not renamed</h3><p class="meta">${esc(answer)}</p></div>`;
+      setStatus(body, answer);
+      speak(answer);
+      return;
+    }
+    const [m] = matches;
+    host.innerHTML = `
+      <div class="card" style="border-color:var(--terra)"><h3>Rename ${esc(m.scope)}?</h3>
+        <p class="meta">“${esc(m.name)}” →</p>
+        <label class="field">New name<input type="text" id="as-ren-name" value="${esc(intent.newName)}" /></label>
+        <div class="row"><button class="btn plain" id="as-ren-yes">Rename</button>
+        <button class="btn soft" id="as-ren-no">Cancel</button></div></div>`;
+    setStatus(body, `Rename “${m.name}” to “${intent.newName}”? (${intent.reason})`);
+    host.querySelector('#as-ren-no')!.addEventListener('click', () => { host.innerHTML = ''; setStatus(body, 'Okay, left as is.'); });
+    host.querySelector('#as-ren-yes')!.addEventListener('click', () => {
+      const final = host.querySelector<HTMLInputElement>('#as-ren-name')!.value.trim();
+      if (!final) { ui.toast('Name it something first.'); return; }
+      store.update((d) => {
+        if (m.scope === 'capture') { const c = d.captures.find((x) => x.id === m.id); if (c) c.name = final; }
+        else if (m.scope === 'spot') { const l = d.locations.find((x) => x.id === m.id); if (l) l.name = final; }
+        else { const b = d.belongings.find((x) => x.id === m.id); if (b) b.name = final; }
+      });
+      ui.toast(`Renamed to “${final}”.`, { action: 'Undo', onAction: () => store.undo() });
+      speak(`Renamed to ${final}.`);
+      host.innerHTML = '';
+      setStatus(body, `Renamed to “${final}”.`);
+    });
+    return;
+  }
+
+  if (intent.kind === 'spot') {
+    const host = body.querySelector('#proposal')!;
+    host.innerHTML = `
+      <div class="card" style="border-color:var(--terra)"><h3>New spot?</h3>
+        <label class="field">Name<input type="text" id="as-spot-name" value="${esc(intent.name)}" /></label>
+        <div class="row"><button class="btn plain" id="as-spot-yes">Create</button>
+        <button class="btn soft" id="as-spot-no">Cancel</button></div></div>`;
+    setStatus(body, `Create the spot “${intent.name}”? (${intent.reason})`);
+    host.querySelector('#as-spot-no')!.addEventListener('click', () => { host.innerHTML = ''; setStatus(body, 'Okay, left as is.'); });
+    host.querySelector('#as-spot-yes')!.addEventListener('click', () => {
+      const final = host.querySelector<HTMLInputElement>('#as-spot-name')!.value.trim();
+      if (!final) { ui.toast('Name the spot first.'); return; }
+      store.update((d) => { d.locations.push({ id: createId('loc'), name: final, createdAt: nowIso() }); });
+      ui.toast(`Spot “${final}” saved.`, { action: 'Undo', onAction: () => store.undo() });
+      speak(`Spot ${final} saved.`);
+      host.innerHTML = '';
+      setStatus(body, `Spot “${final}” saved.`);
+    });
+    return;
+  }
+
+  if (intent.kind === 'desk') {
+    const answer = deskSummary(store.state);
+    setStatus(body, `${answer} (${intent.reason})`);
+    speak(answer);
+    return;
+  }
+
+  if (intent.kind === 'wear') {
+    const pick = wearPick(store.state);
+    const answer = pick
+      ? `How about ${pick.names}${pick.occasion ? ` for ${pick.occasion}` : ''}?`
+      : 'I could not put together a full outfit from available pieces — your wardrobe has the details.';
+    const host = body.querySelector('#proposal')!;
+    host.innerHTML = `<div class="card"><h3>Outfit ideas live in the wardrobe</h3>
+      <p class="meta">${esc(answer)}</p>
+      <p><button class="btn plain" id="as-wardrobe">Open wardrobe</button></p></div>`;
+    setStatus(body, `${answer} (${intent.reason})`);
+    speak(answer);
+    host.querySelector('#as-wardrobe')!.addEventListener('click', () => { close(); ui.open('wardrobe', {}); });
     return;
   }
 
@@ -143,8 +436,8 @@ async function run(
     setStatus(body, prompt);
     await speakAndWait(prompt);
     if (!alive()) return;
-    setStatus(body, 'Listening for your answer… (say “skip” to fill it in by hand)');
-    const answer = await listenOnce({});
+    setStatus(body, 'Listening for your answer… tap ⏺ Done when finished (or say “skip”, then Done).');
+    const answer = await listenUtterance(body, start, 'Listening for your answer…');
     if (!alive()) return;
     if (answer && !/^skip\b/i.test(answer)) p = applySlotAnswer(p, slot, answer);
   }
