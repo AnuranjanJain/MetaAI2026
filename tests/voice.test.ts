@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTranscript, chunkForSpeech, stripTrailingStopPhrase } from '../src/voice.js';
+import { createTranscript, chunkForSpeech, parseConfirmAnswer, stripTrailingStopPhrase } from '../src/voice.js';
 
 describe('createTranscript', () => {
   it('appends final segments across restarts', () => {
@@ -67,6 +67,30 @@ describe('stripTrailingStopPhrase', () => {
     // The pure helper strips; classifyIntent must classify the RAW text
     // first so "Mark buy milk done" still matches as done.
     assert.equal(stripTrailingStopPhrase('Mark buy milk done'), 'Mark buy milk');
+  });
+});
+
+describe('parseConfirmAnswer', () => {
+  it('hears yes in its many forms', () => {
+    for (const t of ['yes', 'Yes!', 'yeah', 'yep, do it', 'confirm', 'save it', 'go ahead', 'okay']) {
+      assert.equal(parseConfirmAnswer(t), 'yes', t);
+    }
+  });
+
+  it('hears no in its many forms', () => {
+    for (const t of ['no', 'Nope.', 'nah', 'cancel', "don't", 'never mind']) {
+      assert.equal(parseConfirmAnswer(t), 'no', t);
+    }
+  });
+
+  it('tolerates a trailing stop phrase but never invents a yes', () => {
+    assert.equal(parseConfirmAnswer("yes, that's it"), 'yes');
+    assert.equal(parseConfirmAnswer("no, that's all"), 'no');
+    assert.equal(parseConfirmAnswer(''), null);
+    assert.equal(parseConfirmAnswer('finished'), null);
+    assert.equal(parseConfirmAnswer('done'), null);
+    assert.equal(parseConfirmAnswer('yesterday I bought milk'), null);
+    assert.equal(parseConfirmAnswer('note this down'), null);
   });
 });
 

@@ -366,3 +366,42 @@ export function speakAndWait(text: string, opts: SpeakOpts = {}): Promise<void> 
 export function stopSpeak(): void {
   try { window.speechSynthesis?.cancel(); } catch { /* noop */ }
 }
+
+// ---------- Hands-free confirm (opt-in) ----------
+
+const HF_KEY = 'pocketroom.handsfree';
+
+/** True only after the user explicitly toggles Hands-free on. Off by default. */
+export function handsFreeEnabled(): boolean {
+  try { return localStorage.getItem(HF_KEY) === '1'; } catch { return false; }
+}
+
+export function setHandsFree(on: boolean): void {
+  try { localStorage.setItem(HF_KEY, on ? '1' : '0'); } catch { /* memory-only */ }
+}
+
+const YES_RE = /^(yes|yeah|yep|yup|sure|confirm|confirmed|save|do it|go ahead|ok|okay|please do|that's right|that's correct)\b/i;
+const NO_RE = /^(no|nope|nah|cancel|stop|don't|dont|never mind|nevermind|not yet|go back)\b/i;
+
+/** Map a spoken answer to yes/no. A trailing stop phrase ("yes, that's it")
+    still counts; bare "done"/"finished" and anything else return null so the
+    caller leaves the card open for a tap. Pure. */
+export function parseConfirmAnswer(text: string): 'yes' | 'no' | null {
+  const t = text.trim().toLowerCase().replace(/\s+/g, ' ').replace(/[.?!]+$/, '').trim();
+  if (!t) return null;
+  const core = stripTrailingStopPhrase(t) || t;
+  if (YES_RE.test(core)) return 'yes';
+  if (NO_RE.test(core)) return 'no';
+  return null;
+}
+
+/** Speak a confirm question, then listen once for yes/no. Resolves null on
+    timeout, unparseable answers, or unsupported browsers — the caller then
+    leaves the card open for a tap. Never creates anything by itself. */
+export async function voiceConfirm(question: string, opts: { timeoutMs?: number } = {}): Promise<'yes' | 'no' | null> {
+  if (!voiceInputSupported()) return null;
+  try { await speakAndWait(`${question} Say yes or no.`); } catch { /* still try listening */ }
+  const heard = await listenOnce({ timeoutMs: opts.timeoutMs ?? 12000 });
+  if (!heard) return null;
+  return parseConfirmAnswer(heard);
+}

@@ -1,12 +1,14 @@
 // Voice assistant sheet: talk → intent → (voice slot-filling) → the same
-// editable confirm card the desk uses → spoken read-back. Nothing is created
-// or completed from voice alone; every mutation waits for a tap on Confirm.
+// editable confirm card the desk uses → spoken read-back. Every mutation waits
+// for a Confirm — by tap, or by a spoken “yes” when the user has opted into
+// Hands-free (a localStorage toggle, off by default). Hands-free clicks the
+// same buttons a tap would; it never invents a new save path.
 
 import { store } from '../store.js';
 import { buildChecklistForEvent, createId, nowIso, todayKey } from '../core/model.js';
 import { applySlotAnswer, missingSlots, propose, searchBelongings, DEMO_LABEL, type ProposalSlot } from '../core/inference.js';
 import { classifyIntent, deskSummary, findRenamable, haveAnswer, matchEvent, matchRoutine, summarizeCreated, summarizeProposal, wardrobeAnswer, wearPick, whereAnswer } from '../core/assistant.js';
-import { speak, speakAndWait, startListeningUntilDone, stopSpeak, stripTrailingStopPhrase, type ListeningSession } from '../voice.js';
+import { handsFreeEnabled, setHandsFree, speak, speakAndWait, startListeningUntilDone, stopSpeak, stripTrailingStopPhrase, voiceConfirm, type ListeningSession } from '../voice.js';
 import { showProposal } from './areas/desk.js';
 import { nextCommitment } from './room.js';
 import { esc, lastStored, type Ui } from '../shell.js';
@@ -36,14 +38,27 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
   body.innerHTML = `
     <p class="meta">Say a task, event, or thing to remember — e.g. “Dentist tomorrow at
       2:30 pm”, “Buy batteries, 20 minutes”, or “Where is my adapter?”.
-      You always confirm before anything is saved. ${esc(DEMO_LABEL)}.</p>
+      You always confirm before anything is saved — by tap, or by voice when
+      Hands-free is on. ${esc(DEMO_LABEL)}.</p>
     <div class="row" style="flex-wrap:wrap;gap:8px">
       <button class="btn plain" id="as-start">🎙️ Start listening</button>
       <button class="btn soft" id="as-desk">Type instead</button>
+      <button class="btn soft" id="as-handsfree">Hands-free: off</button>
     </div>
     <p class="meta" id="as-status" aria-live="polite" style="margin-top:12px">Ready when you are.</p>
     <div id="proposal"></div>`;
   sheetRoot.querySelector('.sheet')!.appendChild(body);
+
+  const hf = body.querySelector<HTMLButtonElement>('#as-handsfree')!;
+  const paintHf = () => { hf.textContent = `Hands-free: ${handsFreeEnabled() ? 'on' : 'off'}`; };
+  paintHf();
+  hf.addEventListener('click', () => {
+    setHandsFree(!handsFreeEnabled());
+    paintHf();
+    setStatus(body, handsFreeEnabled()
+      ? 'Hands-free on: after each card, say “yes” to confirm or “no” to cancel. Every save is still read back aloud.'
+      : 'Hands-free off: tap to confirm, as before.');
+  });
 
   const alive = () => session === sessionSeq && body.isConnected;
   const close = () => {
@@ -63,6 +78,26 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
 function setStatus(body: HTMLElement, text: string): void {
   const el = body.querySelector('#as-status');
   if (el) el.textContent = text.length > 220 ? text.slice(0, 220) + '…' : text;
+}
+
+/** Hands-free confirm: ask aloud, and click the same yes/no button a tap
+    would. Only runs when the user opted in; anything unheard leaves the card
+    open for a tap. */
+function offerVoiceConfirm(
+  body: HTMLElement, alive: () => boolean,
+  question: string, yesSel: string, noSel: string,
+): void {
+  if (!handsFreeEnabled()) return;
+  void (async () => {
+    const answer = await voiceConfirm(question);
+    if (!alive()) return;
+    const yes = body.querySelector<HTMLButtonElement>(yesSel);
+    const no = body.querySelector<HTMLButtonElement>(noSel);
+    if (!yes || !no) return;
+    if (answer === 'yes') yes.click();
+    else if (answer === 'no') no.click();
+    else setStatus(body, `${question} Say “yes” or “no”, or tap.`);
+  })();
 }
 
 /**
@@ -212,6 +247,7 @@ async function run(
       host.innerHTML = '';
       setStatus(body, `Created routine “${final}”. Link items to it in the doorway.`);
     });
+    offerVoiceConfirm(body, alive, `Create the routine “${name}”?`, '#as-rou-yes', '#as-rou-no');
     return;
   }
 
@@ -251,6 +287,7 @@ async function run(
       host.innerHTML = '';
       setStatus(body, `Added to “${routine.name}”.`);
     });
+    offerVoiceConfirm(body, alive, `Add ${what} to “${routine.name}”?`, '#as-ra-yes', '#as-ra-no');
     return;
   }
 
@@ -310,6 +347,7 @@ async function run(
       host.innerHTML = '';
       setStatus(body, `Packing list ready for “${event!.title}”.`);
     });
+    offerVoiceConfirm(body, alive, `Build the list for “${event.title}”?`, '#as-out-yes', '#as-out-no');
     return;
   }
 
@@ -347,6 +385,7 @@ async function run(
       host.innerHTML = '';
       setStatus(body, `Renamed to “${final}”.`);
     });
+    offerVoiceConfirm(body, alive, `Rename “${m.name}” to “${intent.newName}”?`, '#as-ren-yes', '#as-ren-no');
     return;
   }
 
@@ -368,6 +407,7 @@ async function run(
       host.innerHTML = '';
       setStatus(body, `Spot “${final}” saved.`);
     });
+    offerVoiceConfirm(body, alive, `Create the spot “${intent.name}”?`, '#as-spot-yes', '#as-spot-no');
     return;
   }
 
@@ -413,6 +453,7 @@ async function run(
       host.innerHTML = '';
       setStatus(body, `Marked “${intent.title}” done.`);
     });
+    offerVoiceConfirm(body, alive, `Mark “${intent.title}” done?`, '#as-done-yes', '#as-done-no');
     return;
   }
 
@@ -450,4 +491,5 @@ async function run(
       close();
     },
   });
+  offerVoiceConfirm(body, alive, 'Create this?', '#p-confirm', '#p-archive');
 }
