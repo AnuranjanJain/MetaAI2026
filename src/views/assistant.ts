@@ -5,8 +5,9 @@
 import { store } from '../store.js';
 import { buildChecklistForEvent, createId, nowIso, todayKey } from '../core/model.js';
 import { applySlotAnswer, missingSlots, propose, searchBelongings, DEMO_LABEL, type ProposalSlot } from '../core/inference.js';
-import { classifyIntent, deskSummary, findRenamable, haveAnswer, matchEvent, matchRoutine, summarizeCreated, summarizeProposal, wardrobeAnswer, wearPick, whereAnswer } from '../core/assistant.js';
-import { handsFreeEnabled, isConversationEnd, setHandsFree, speak, speakAndWait, startListeningUntilDone, stopSpeak, stripConversationEnd, stripTrailingStopPhrase, voiceConfirm, type ListeningSession } from '../voice.js';
+import { deskSummary, findRenamable, haveAnswer, matchEvent, matchRoutine, summarizeCreated, summarizeProposal, wardrobeAnswer, wearPick, whereAnswer } from '../core/assistant.js';
+import { LIVE_LABEL, resolveIntent } from '../core/liveModel.js';
+import { handsFreeEnabled, isConversationEnd, setHandsFree, speak, speakAndWait, startListeningUntilDone, stopSpeak, stripConversationEnd, voiceConfirm, type ListeningSession } from '../voice.js';
 import { showProposal } from './areas/desk.js';
 import { nextCommitment } from './room.js';
 import { esc, lastStored, type Ui } from '../shell.js';
@@ -156,18 +157,15 @@ async function run(
     if (convo) stopAfterTurn = true;
   }
 
-  // Classify the raw text first so a done-command ending in "done" still
-  // matches; only then strip a trailing stop phrase and re-classify.
-  let intent = classifyIntent(heard, store.state);
-  if (intent.kind !== 'done') {
-    const stripped = stripTrailingStopPhrase(heard);
-    if (!stripped) {
-      setStatus(body, 'Okay, all done.');
-      speak('Okay, all done.');
-      return;
-    }
-    if (stripped !== heard) intent = classifyIntent(stripped, store.state);
+  // Live-first, local fallback (classify-raw-first/strip ordering inside).
+  const resolved = await resolveIntent(heard, store.state);
+  if (resolved === 'empty') {
+    setStatus(body, 'Okay, all done.');
+    speak('Okay, all done.');
+    return;
   }
+  let intent = resolved.intent;
+  const live = resolved.live;
 
   if (intent.kind === 'ambiguous') {
     const question = `“${intent.text}” — should I add that as new, or look it up?`;
@@ -484,6 +482,7 @@ async function run(
   setStatus(body, summarizeProposal(p));
   showProposal(body, ui, capture.id, {
     proposal: p,
+    label: live ? LIVE_LABEL : undefined,
     onFinished: (final, outcome) => {
       if (outcome === 'confirmed') speak(summarizeCreated(final));
       if (!handsFreeEnabled()) close();

@@ -26,6 +26,8 @@ jobs:
       - run: npm run build
         env:
           VITE_PAGES_BASE: /MetaAI2026/
+          # Public proxy URL only — the Muse key stays in the Vercel dashboard.
+          VITE_MUSE_PROXY_URL: ${{ secrets.VITE_MUSE_PROXY_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

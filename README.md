@@ -58,8 +58,8 @@ More screenshots (planner, wardrobe photo) coming soon.
 | Voice in/out | Browser Web Speech API (`SpeechRecognition` + `speechSynthesis`), feature-detected |
 | Music/SFX | WebAudio — synthesized loops + UI motifs, zero audio files |
 | Images | Canvas-downscaled JPEG data URLs (quota-safe local persistence) |
-| Tests | `node:test` + `tsx` — 50 tests, pure logic in `src/core/` |
-| Backend (planned) | Modal serverless proxy → Muse API, scale-to-zero, key in server secret only |
+| Tests | `node:test` + `tsx` — 115 tests, pure logic in `src/core/` |
+| Backend (optional) | Vercel serverless proxy (`api/interpret.ts`) → Muse API (`muse-spark-1.3`), key in Vercel server secret only |
 
 ## Usage
 
@@ -68,7 +68,7 @@ Prereqs: Node 18+.
 ```bash
 npm install
 npm run dev      # http://127.0.0.1:5173 — localhost is a secure context, so the mic works here
-npm test         # 50 tests across assistant / planner / wardrobe / scheduling
+npm test         # 115 tests across assistant / planner / wardrobe / scheduling / live adapter
 npm run build    # tsc --noEmit && vite build → dist/
 npm run preview  # serve the production build locally
 ```
@@ -79,8 +79,11 @@ Notes:
   hides itself and typing always works). Mic permission denied → graceful toast.
 - Your data never leaves the device. No accounts, no tracking, no network calls
   in the local build. Clearing site data wipes the room.
-- Cloud AI (Phase 4) is parked behind a verification gate and stays fully optional —
-  if the backend is off or unreachable, the app degrades to the complete local product.
+- Cloud AI stays fully optional: live Muse speech understanding is a
+  `localStorage` opt-in (`pocketroom.liveMuse`) plus a `VITE_MUSE_PROXY_URL`
+  build secret. If the backend is off or unreachable, the app silently uses
+  the complete local product. The Muse key lives only in the Vercel
+  dashboard — never the repo or bundle (see `docs/integrations.md`).
 
 ## Project structure
 
@@ -95,7 +98,7 @@ src/
   store.ts     # single store + undo         styles.css    # full-height frame + rails
 tests/         # assistant, planner, wardrobe, scheduling suites
 docs/          # integrations.md (honesty contract), screenshots/
-server/        # Phase 4 cloud backend (planned, not yet built)
+api/           # Vercel proxy: transcript → Muse intent (key in Vercel secret only)
 ```
 
 Conventions: pure logic lives in `src/core/`; views never mutate the store except
