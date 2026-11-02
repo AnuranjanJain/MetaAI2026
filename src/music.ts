@@ -1,7 +1,8 @@
 // Room tunes: a tiny local music player. Eight original synth loops played
 // with WebAudio — no files, no network, no account needed — plus the user's
-// own uploaded audio files, persisted in IndexedDB and played through the
-// same queue, so the room speakers and the dock card never disagree.
+// own uploaded audio files, persisted in IndexedDB, and named playlists over
+// both, persisted in localStorage. One shared queue, so the room speakers
+// and the dock card never disagree.
 
 export interface Track {
   id: string;
@@ -50,6 +51,51 @@ export interface QueueItem {
   artist: string;
   mood: string;
   custom: boolean;
+}
+
+/** A named mix of builtin loop ids and upload ids, in play order. */
+export interface Playlist {
+  id: string;
+  name: string;
+  keys: string[];
+}
+
+const PLAYLISTS_KEY = 'pocketroom.playlists';
+const MAX_PLAYLISTS = 50;
+const MAX_PLAYLIST_TRACKS = 200;
+const MAX_PLAYLIST_NAME = 40;
+const MAX_TRACK_KEY = 120;
+
+/** Allowlist stored rows into exact-shape playlists. Drops malformed rows
+    and keys instead of throwing — storage is untrusted input. Pure. */
+export function sanitizePlaylists(value: unknown): Playlist[] {
+  if (!Array.isArray(value)) return [];
+  const out: Playlist[] = [];
+  for (const row of value.slice(0, MAX_PLAYLISTS)) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const r = row as Record<string, unknown>;
+    if (typeof r.id !== 'string' || !r.id || r.id.length > MAX_TRACK_KEY) continue;
+    if (typeof r.name !== 'string') continue;
+    const name = r.name.trim().slice(0, MAX_PLAYLIST_NAME);
+    if (!name) continue;
+    if (!Array.isArray(r.keys)) continue;
+    const seen = new Set<string>();
+    const keys: string[] = [];
+    for (const k of r.keys) {
+      if (typeof k !== 'string' || !k || k.length > MAX_TRACK_KEY || seen.has(k)) continue;
+      seen.add(k);
+      keys.push(k);
+      if (keys.length >= MAX_PLAYLIST_TRACKS) break;
+    }
+    out.push({ id: r.id, name, keys });
+  }
+  return out;
+}
+
+function loadPlaylists(): Playlist[] {
+  try {
+    return sanitizePlaylists(JSON.parse(localStorage.getItem(PLAYLISTS_KEY) ?? '[]'));
+  } catch { return []; }
 }
 
 /** IndexedDB keeps upload blobs across reloads (localStorage is too small
@@ -104,6 +150,10 @@ class Player {
   favorites = new Set<string>(loadFavorites());
   /** Uploaded tracks, newest last. Always queued ahead of the builtins. */
   custom: CustomTrack[] = [];
+  /** Named mixes over uploads + builtins, persisted in localStorage. */
+  playlists: Playlist[] = loadPlaylists();
+  /** When set, the queue narrows to that playlist's members. */
+  activePlaylistId: string | null = null;
   /** Transient UI note (upload rejected, file unplayable…). Cleared on play. */
   notice = '';
   private ctx: AudioContext | null = null;
@@ -117,8 +167,8 @@ class Player {
   private audioKey: string | null = null;
   private listeners = new Set<Listener>();
 
-  /** Uploads first (newest last), then the builtin loops. */
-  get queue(): QueueItem[] {
+  /** Full library: uploads first (newest last), then the builtin loops. */
+  get library(): QueueItem[] {
     const mine = this.custom.map((c) => ({
       key: c.id, title: c.title, artist: 'My upload', mood: 'your music', custom: true,
     }));
@@ -126,6 +176,99 @@ class Player {
       key: t.id, title: t.title, artist: t.artist, mood: t.mood, custom: false,
     }));
     return [...mine, ...built];
+  }
+
+  /** What actually plays: the active playlist's members in order, or the
+      full library. Missing uploads drop out; an empty-resolving playlist
+      falls back to the library so playback never strands. */
+  get queue(): QueueItem[] {
+    const active = this.activePlaylist();
+    if (!active) return this.library;
+    const byKey = new Map(this.library.map((q) => [q.key, q]));
+    const narrowed = active.keys
+      .map((k) => byKey.get(k))
+      .filter((q): q is QueueItem => !!q);
+    return narrowed.length ? narrowed : this.library;
+  }
+
+  activePlaylist(): Playlist | null {
+    if (!this.activePlaylistId) return null;
+    return this.playlists.find((p) => p.id === this.activePlaylistId) ?? null;
+  }
+
+  /** Play one mix (index resets to its first member), or null for everything. */
+  playPlaylist(id: string | null): void {
+    this.activePlaylistId = id && this.playlists.some((p) => p.id === id) ? id : null;
+    this.index = 0;
+    this.step = 0;
+    this.play();
+  }
+
+  /** Leave mix mode for the full library, staying on the current track. */
+  exitPlaylist(): void {
+    if (!this.activePlaylistId) return;
+    const key = this.track.key;
+    this.activePlaylistId = null;
+    const at = this.queue.findIndex((q) => q.key === key);
+    this.index = Math.max(0, at);
+    this.step = 0;
+    if (this.playing) this.play();
+    else this.emit();
+  }
+
+  /** Name a new empty mix. Null when blank or the shelf is full. */
+  createPlaylist(name: string): Playlist | null {
+    const clean = name.trim().slice(0, MAX_PLAYLIST_NAME);
+    if (!clean || this.playlists.length >= MAX_PLAYLISTS) return null;
+    const pl: Playlist = {
+      id: `pl-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+      name: clean, keys: [],
+    };
+    this.playlists.push(pl);
+    this.savePlaylists();
+    this.emit();
+    return pl;
+  }
+
+  deletePlaylist(id: string): boolean {
+    const at = this.playlists.findIndex((p) => p.id === id);
+    if (at < 0) return false;
+    this.playlists.splice(at, 1);
+    if (this.activePlaylistId === id) {
+      this.activePlaylistId = null;
+      this.clampIndex();
+    }
+    this.savePlaylists();
+    this.emit();
+    return true;
+  }
+
+  /** Append one library track to a mix. False when unknown, full, or duped. */
+  addToPlaylist(id: string, key: string): boolean {
+    const pl = this.playlists.find((p) => p.id === id);
+    if (!pl || pl.keys.length >= MAX_PLAYLIST_TRACKS || pl.keys.includes(key)) return false;
+    const known = this.custom.some((c) => c.id === key) || TRACKS.some((t) => t.id === key);
+    if (!known) return false;
+    pl.keys.push(key);
+    this.savePlaylists();
+    this.emit();
+    return true;
+  }
+
+  removeFromPlaylist(id: string, key: string): boolean {
+    const pl = this.playlists.find((p) => p.id === id);
+    if (!pl) return false;
+    const at = pl.keys.indexOf(key);
+    if (at < 0) return false;
+    pl.keys.splice(at, 1);
+    this.clampIndex();
+    this.savePlaylists();
+    this.emit();
+    return true;
+  }
+
+  private savePlaylists(): void {
+    try { localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(this.playlists)); } catch { /* private mode */ }
   }
 
   get track(): QueueItem {
@@ -286,8 +429,8 @@ class Player {
       this.emit();
       return;
     }
-    if (this.custom.length >= 50) {
-      this.notice = 'Upload shelf is full (50) — remove one first.';
+    if (this.custom.length >= 200) {
+      this.notice = 'Upload shelf is full (200) — remove one first.';
       this.emit();
       return;
     }
@@ -324,6 +467,8 @@ class Player {
     if (selected) this.pause();
     try { URL.revokeObjectURL(this.custom[at].url); } catch { /* already gone */ }
     this.custom.splice(at, 1);
+    for (const pl of this.playlists) pl.keys = pl.keys.filter((k) => k !== id);
+    this.savePlaylists();
     if (this.audio && this.audioKey === id) {
       try { this.audio.removeAttribute('src'); this.audio.load(); } catch { /* noop */ }
       this.audioKey = null;

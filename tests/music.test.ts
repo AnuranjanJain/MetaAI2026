@@ -4,15 +4,20 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { player, TRACKS } from '../src/music.js';
+import { player, sanitizePlaylists, TRACKS } from '../src/music.js';
 
-const saved = { custom: player.custom, index: player.index, playing: player.playing, notice: player.notice };
+const saved = {
+  custom: player.custom, index: player.index, playing: player.playing, notice: player.notice,
+  playlists: player.playlists, activePlaylistId: player.activePlaylistId,
+};
 
 beforeEach(() => {
   player.custom = [];
   player.index = 0;
   player.playing = false;
   player.notice = '';
+  player.playlists = [];
+  player.activePlaylistId = null;
 });
 
 afterEach(() => {
@@ -20,6 +25,8 @@ afterEach(() => {
   player.index = saved.index;
   player.playing = saved.playing;
   player.notice = saved.notice;
+  player.playlists = saved.playlists;
+  player.activePlaylistId = saved.activePlaylistId;
 });
 
 describe('music queue', () => {
@@ -82,5 +89,98 @@ describe('music queue', () => {
     player.toggleFavorite();
     assert.equal(player.isFavorite(), false);
     assert.ok(!player.favorites.has(key));
+  });
+
+  it('refuses more uploads once the shelf is full', async () => {
+    player.custom = Array.from({ length: 200 }, (_, i) => ({ id: `up-${i}`, title: `Song ${i}`, url: `blob:${i}` }));
+    await player.addUpload({ name: 'one-more.mp3', type: 'audio/mpeg', size: 10 } as unknown as File);
+    assert.equal(player.custom.length, 200);
+    assert.match(player.notice, /shelf is full/);
+  });
+});
+
+describe('music playlists', () => {
+  it('creates playlists with trimmed names and rejects blanks', () => {
+    assert.equal(player.createPlaylist('   '), null);
+    const pl = player.createPlaylist('  Focus mix  ');
+    assert.ok(pl);
+    assert.equal(pl.name, 'Focus mix');
+    assert.deepEqual(pl.keys, []);
+    assert.equal(player.playlists.length, 1);
+  });
+
+  it('adds builtin and upload keys once each, rejects unknown keys', () => {
+    const pl = player.createPlaylist('Mix')!;
+    player.custom = [{ id: 'up-a', title: 'My song', url: 'blob:1' }];
+    assert.equal(player.addToPlaylist(pl.id, TRACKS[0].id), true);
+    assert.equal(player.addToPlaylist(pl.id, 'up-a'), true);
+    assert.equal(player.addToPlaylist(pl.id, 'up-a'), false); // no dupes
+    assert.equal(player.addToPlaylist(pl.id, 'nope'), false);
+    assert.deepEqual(pl.keys, [TRACKS[0].id, 'up-a']);
+  });
+
+  it('playing a playlist narrows the queue to its members in order', () => {
+    const pl = player.createPlaylist('Mix')!;
+    player.custom = [{ id: 'up-a', title: 'My song', url: 'blob:1' }];
+    player.addToPlaylist(pl.id, 'up-a');
+    player.addToPlaylist(pl.id, TRACKS[1].id);
+    player.playPlaylist(pl.id);
+    assert.deepEqual(player.queue.map((q) => q.key), ['up-a', TRACKS[1].id]);
+    assert.equal(player.track.title, 'My song');
+    player.next();
+    assert.equal(player.track.key, TRACKS[1].id);
+    player.playPlaylist(null);
+    assert.equal(player.queue.length, TRACKS.length + 1);
+  });
+
+  it('leaving a mix returns to the library on the same track', () => {
+    const pl = player.createPlaylist('Mix')!;
+    player.addToPlaylist(pl.id, TRACKS[2].id);
+    player.addToPlaylist(pl.id, TRACKS[4].id);
+    player.playPlaylist(pl.id);
+    player.next();
+    assert.equal(player.track.key, TRACKS[4].id);
+    player.exitPlaylist();
+    assert.equal(player.activePlaylistId, null);
+    assert.equal(player.queue.length, TRACKS.length);
+    assert.equal(player.track.key, TRACKS[4].id);
+  });
+
+  it('drops missing uploads from a playlist queue without breaking', () => {
+    const pl = player.createPlaylist('Mix')!;
+    player.addToPlaylist(pl.id, TRACKS[0].id);
+    pl.keys.push('up-gone'); // upload removed behind our back
+    player.playPlaylist(pl.id);
+    assert.deepEqual(player.queue.map((q) => q.key), [TRACKS[0].id]);
+  });
+
+  it('removing an upload strips it from every playlist', async () => {
+    const pl = player.createPlaylist('Mix')!;
+    player.custom = [{ id: 'up-a', title: 'My song', url: 'blob:1' }];
+    player.addToPlaylist(pl.id, 'up-a');
+    player.addToPlaylist(pl.id, TRACKS[0].id);
+    await player.removeUpload('up-a');
+    assert.deepEqual(pl.keys, [TRACKS[0].id]);
+  });
+
+  it('removes members and deletes playlists', () => {
+    const pl = player.createPlaylist('Mix')!;
+    player.addToPlaylist(pl.id, TRACKS[0].id);
+    assert.equal(player.removeFromPlaylist(pl.id, TRACKS[1].id), false);
+    assert.equal(player.removeFromPlaylist(pl.id, TRACKS[0].id), true);
+    assert.deepEqual(pl.keys, []);
+    assert.equal(player.deletePlaylist('missing'), false);
+    assert.equal(player.deletePlaylist(pl.id), true);
+    assert.equal(player.playlists.length, 0);
+  });
+
+  it('sanitizes stored playlists and drops malformed rows', () => {
+    const cleaned = sanitizePlaylists([
+      { id: 'pl-1', name: '  Road  ', keys: ['morning', 7, 'x'.repeat(300)] },
+      { id: 'pl-2', name: '', keys: [] },
+      'junk',
+      null,
+    ]);
+    assert.deepEqual(cleaned, [{ id: 'pl-1', name: 'Road', keys: ['morning'] }]);
   });
 });

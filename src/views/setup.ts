@@ -6,7 +6,7 @@ import { hasKey } from '../core/byok.js';
 import { liveBadge, liveModeEnabled, proxyConfigured, setLiveMode } from '../core/liveModel.js';
 import { getProvider, hasOpenKey } from '../core/openweights.js';
 import { keyFieldHtml, openKeyFieldHtml, wireKeyField, wireOpenKeyField } from './key.js';
-import { esc, type Ui } from '../shell.js';
+import { esc, noteHtml, type Ui } from '../shell.js';
 
 let seq = 0;
 
@@ -38,14 +38,17 @@ export function openKeys(sheetRoot: HTMLElement, ui: Ui): void {
     `Baseten key: ${hasOpenKey() ? 'saved in this browser' : 'not set'}`,
     `Chat backend: ${provider === 'open' ? 'Spark Open (Baseten)' : 'Muse Spark (Meta)'}`,
   ];
+  const stat = (r: string): string => {
+    const i = r.indexOf(': ');
+    return `<li class="stat"><span>${esc(r.slice(0, i))}</span><strong>${esc(r.slice(i + 2))}</strong></li>`;
+  };
+  const live = liveModeEnabled();
   body.innerHTML = `
-    <div class="card"><ul class="clean">${rows.map((r) => `<li class="meta">${esc(r)}</li>`).join('')}</ul>
-    <p><button class="btn soft small" id="keys-live">Live: ${liveModeEnabled() ? 'on' : 'off'}</button></p></div>
+    <div class="card"><ul class="clean stat-list">${rows.map(stat).join('')}</ul>
+    <p style="margin-bottom:0"><button class="btn ${live ? 'plain' : 'soft'} live-switch" id="keys-live">${live ? '● Live is ON' : '○ Live is OFF'}</button></p></div>
     ${keyFieldHtml('keys')}
     ${openKeyFieldHtml('keys')}
-    <p class="meta">Routing: your keys → proxy → on-device fallback, always
-    labeled per result. Vision, transcribe, and dream use Meta; intent and
-    Captain chats follow the backend above.</p>`;
+    ${noteHtml('demo', 'Route', 'Your keys → proxy → on-device fallback, always labeled per result. Vision, transcribe, and dream use Meta; intent and Captain chats follow the backend above.')}`;
   sheetRoot.querySelector('.sheet')!.appendChild(body);
   body.querySelector('#keys-live')!.addEventListener('click', () => {
     if (!alive()) return;

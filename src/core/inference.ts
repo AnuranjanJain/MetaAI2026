@@ -17,6 +17,9 @@ const TASK_WORDS = ['buy', 'do', 'finish', 'submit', 'call', 'email', 'send', 'h
 const ITEM_WORDS = ['bring', 'pack', 'remember', 'forget', 'need', 'item', 'called', 'named', 'charger', 'adapter', 'keys', 'passport', 'umbrella', 'laptop'];
 
 const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i;
+/** Voice transcripts spell the colon as a space ("7 00 am"). Tried first —
+    without it the "00 am" fragment misparses as midnight. */
+const TIME_SPACE_RE = /\b(\d{1,2})\s(\d{2})\s*(am|pm)\b/i;
 const TIME24_RE = /\b([01]?\d|2[0-3]):([0-5]\d)\b/;
 const DURATION_RE = /(\d+)\s*(min|mins|minutes|h|hr|hrs|hour|hours)\b/i;
 // Voice transcripts are lowercase, so the place word may be too ("at the
@@ -24,10 +27,16 @@ const DURATION_RE = /(\d+)\s*(min|mins|minutes|h|hr|hrs|hour|hours)\b/i;
 const PLACE_RE = /\b(?:at|in|on|room|building)\s+(?:the\s+|my\s+)?([a-z0-9][\w .'-]{1,30})/i;
 /** Clause words that end a place/item capture ("the table so you have to…"). */
 const CLAUSE_CUT = /\b(so|which|that|who|because|please|you have|i have|we have|to create|to add|to make)\b/i;
-/** Captures that are really times, not places ("at 2:30pm", "at 5 pm"). */
-const TIME_LIKE = /^\d{1,2}:\d\d|^\d+\s*(am|pm)\b/i;
+/** Captures that are really times, not places ("at 2:30pm", "at 5 pm", "at 7 00 am"). */
+const TIME_LIKE = /^\d{1,2}:\d\d|^\d{1,2}\s+\d{2}\s*(am|pm)\b|^\d+\s*(am|pm)\b/i;
 
 function parseTime(text: string): string | undefined {
+  const sp = TIME_SPACE_RE.exec(text);
+  if (sp && Number(sp[2]) < 60) {
+    let h = Number(sp[1]) % 12;
+    if (sp[3].toLowerCase() === 'pm') h += 12;
+    return `${String(h).padStart(2, '0')}:${sp[2]}`;
+  }
   const m12 = TIME_RE.exec(text);
   if (m12) {
     let h = Number(m12[1]) % 12;

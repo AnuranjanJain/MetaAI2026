@@ -9,6 +9,28 @@ import type { AssistantIntent } from './assistant.js';
 
 export const MUSE_URL = 'https://api.meta.ai/v1/chat/completions';
 export const MUSE_MODEL = 'muse-spark-1.3-contributor';
+
+const SHORT_MODELS: Record<string, string> = {
+  'muse-spark-1.3-contributor': 'Spark 1.3',
+  'muse-spark-1.3': 'Spark 1.3',
+  'muse-spark-1.2': 'Spark 1.2',
+  'muse-spark-1.1': 'Spark 1.1',
+  'muse-wonder-1.0': 'Wonder 1.0',
+  'muse-image-1.0': 'Image 1.0',
+  'muse-voice-transcribe-1.0': 'Voice',
+  'meta-models/muse-spark-open-1026': 'Spark Open',
+  'sam-3.1': 'SAM 3.1',
+};
+
+/** Compact model name for tight UI surfaces. Display-only — full ids stay
+    in tooltips, AI setup, and traces, and are never rewritten on the wire.
+    Unknown ids shed their vendor prefix and trim to 24 chars. Pure. */
+export function shortModel(id: string): string {
+  const known = SHORT_MODELS[id];
+  if (known) return known;
+  const bare = id.replace(/^(muse-|meta-models\/)/, '').replace(/-/g, ' ').trim();
+  return (bare || id).slice(0, 24) || 'model';
+}
 // Agentic reasoning model for Morning Captain (verified in dev.meta.ai model
 // docs: muse-wonder-1.0, same chat-completions API, pay-as-you-go).
 // Same endpoint, prompts, and plan shape as Spark — only the model differs.

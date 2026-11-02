@@ -10,7 +10,7 @@ import { maskSvg, type SamMask } from '../../core/sam.js';
 import { getKey, hasKey } from '../../core/byok.js';
 import { readImageDataUrl, validateImageFile } from '../../image.js';
 import type { Clothing, ClothingState, DetectedClothing, Id } from '../../core/types.js';
-import { esc, type Ui } from '../../shell.js';
+import { esc, noteHtml, type Ui } from '../../shell.js';
 
 let filter: ClothingState | 'all' = 'all';
 let occasion = 'class';
@@ -60,7 +60,11 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
         <input type="text" id="wd-tags" placeholder="Tags: work, casual…" style="flex:2;min-width:140px" />
         <button class="btn soft small" id="wd-add">Add</button></div></div>
     <div class="card"><h3>Add from photo</h3>
-      <div class="demo-note">${esc(photoVia === 'direct' ? PHOTO_DIRECT_LABEL : photoVia ? PHOTO_LIVE_LABEL : PHOTO_LABEL)}</div>
+      ${photoVia === 'direct'
+        ? noteHtml('live', 'Muse key', esc(PHOTO_DIRECT_LABEL))
+        : photoVia
+          ? noteHtml('live', 'Muse on', esc(PHOTO_LIVE_LABEL))
+          : noteHtml('demo', 'Demo', esc(PHOTO_LABEL))}
       ${photoVia ? '' : '<p><button class="btn soft small" id="wd-setup">AI setup — add a key for live detection</button></p>'}
       <p><label class="field">Wardrobe photo<input type="file" id="wd-photo" accept="image/*" /></label></p>
       ${photoUrl ? `<img src="${photoUrl}" alt="Your wardrobe photo" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px" />
@@ -80,7 +84,7 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
       <p class="meta">${photoItemCount(s.clothing)}/${PHOTO_ITEM_CAP} photo-backed pieces. ${photoVia === 'direct' ? 'This photo was sent to the Muse API with your key when you tapped Detect — the downscaled copy is attached to each piece you save.' : photoVia ? 'This photo was sent to the proxy for detection when you tapped Detect — the downscaled copy is attached to each piece you save.' : 'The downscaled photo is attached to each piece you save and never leaves this device.'}</p>
     </div>
     <div class="card"><h3>Suggest for an occasion</h3>
-      <div class="demo-note">${DEMO_LABEL} for outfit ideas. Only available catalog items are used.</div>
+      ${noteHtml('demo', 'Demo', `${esc(DEMO_LABEL)} for outfit ideas. Only available catalog items are used.`)}
       ${todayEvent ? `<p class="meta">Today — from your events: <strong>${esc(occasionFromEvent(todayEvent.title)!)}</strong> (“${esc(todayEvent.title)}”) <button class="btn soft small" id="wd-today">Use this</button></p>` : ''}
       <div class="row"><select id="wd-occ" style="flex:1" aria-label="Occasion">
         ${['class', 'work', 'gym', 'evening', 'weekend'].map((o) => `<option ${o === occasion ? 'selected' : ''}>${o}</option>`).join('')}

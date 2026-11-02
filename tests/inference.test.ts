@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { propose, validateProposal, suggestOutfits, searchBelongings } from '../src/core/inference.js';
+import { extractPlace, propose, validateProposal, suggestOutfits, searchBelongings } from '../src/core/inference.js';
 import type { Belonging, Clothing, StorageLocation } from '../src/core/types.js';
 
 describe('propose', () => {
@@ -15,6 +15,20 @@ describe('propose', () => {
     assert.equal(p.place, 'Main St clinic');
     assert.deepEqual(p.missing, []);
     assert.equal(p.confidence, 'high');
+  });
+
+  it('reads space-separated voice times ("7 00 am" → 07:00, not 00:00)', () => {
+    const p = propose('Deport aways at 7 00 am', false);
+    assert.equal(p.type, 'event');
+    assert.equal(p.time, '07:00');
+    assert.equal(p.place, undefined);
+    const q = propose('Meet at 12 30 pm', false);
+    assert.equal(q.time, '12:30');
+  });
+
+  it('never mistakes a space-separated time for a place', () => {
+    assert.equal(extractPlace('Dinner at 7 00 pm'), undefined);
+    assert.equal(extractPlace('Dinner at Main St'), 'Main St');
   });
 
   it('never invents date or time; gaps go to missing', () => {

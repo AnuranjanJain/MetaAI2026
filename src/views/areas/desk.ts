@@ -10,7 +10,8 @@ import { resolveProposal } from '../../core/liveModel.js';
 import { startListeningUntilDone, voiceInputSupported, type ListeningSession } from '../../voice.js';
 import { readImageDataUrl, validateImageFile } from '../../image.js';
 import type { Capture, Id, Proposal } from '../../core/types.js';
-import { esc, type Ui } from '../../shell.js';
+import { shortModel } from '../../core/muse.js';
+import { esc, noteHtml, type Ui } from '../../shell.js';
 
 let dictating: ListeningSession | null = null;
 
@@ -106,9 +107,10 @@ export function renderDesk(body: HTMLElement, ui: Ui, opts: { focusAdd?: boolean
 
 export interface ShowProposalOpts {
   proposal?: Proposal;
-  label?: string;
+  /** Live provenance for the note line (assistant / Muse paths). */
+  live?: { direct: boolean; model: string; latencyMs?: number };
   /** Called instead of re-rendering the desk (assistant / live paths). */
-  onFinished?: (p: Proposal, outcome: 'confirmed' | 'archived') => void;
+  onFinished?: (p: Proposal, outcome: 'confirmed' | 'archived' | 'discarded') => void;
 }
 
 export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: ShowProposalOpts = {}): void {
@@ -116,7 +118,6 @@ export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: Sho
   const host = body.querySelector('#proposal')!;
   if (!c) return;
   const p = opts.proposal ?? propose(c.text, c.kind === 'image');
-  const label = opts.label ?? DEMO_LABEL;
   // Voice-style "passport in top drawer": pre-select the hinted spot on
   // item proposals so Confirm places the belonging immediately.
   if (p.type === 'item' && !p.locationHint) {
@@ -124,11 +125,15 @@ export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: Sho
     const spot = hint ? matchLocationHint(hint, store.state) : null;
     if (spot) p.locationHint = spot.name;
   }
-  const canMuse = !opts.proposal && !opts.label && c.text.trim().length >= 3;
+  const canMuse = !opts.proposal && !opts.live && c.text.trim().length >= 3;
+  const note = opts.live
+    ? noteHtml('live', opts.live.direct ? 'Muse key' : 'Muse on',
+      `Proposal • ${esc(shortModel(opts.live.model))}${opts.live.latencyMs !== undefined ? ` • ${Math.round(opts.live.latencyMs / 1000)}s` : ''} — check every field, the source is quoted below.`)
+    : noteHtml('demo', 'Demo', `${esc(DEMO_LABEL)}. Check every field — the source is quoted below.`);
   host.innerHTML = `
     <div class="card" style="border-color:var(--terra)">
       <h3>Confirm before creating <span class="pill terra">${p.confidence} confidence</span></h3>
-      <div class="demo-note">${esc(label)}. Check every field — the source is quoted below.</div>
+      ${note}
       ${canMuse ? '<p><button class="btn soft small" id="p-muse">Interpret with Muse</button> <span class="meta" id="p-muse-note"></span></p>' : ''}
       <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
         ${(['task', 'event', 'item', 'reference'] as const).map((t) =>
@@ -140,9 +145,10 @@ export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: Sho
       ${c.imageDataUrl ? `<p><img src="${c.imageDataUrl}" alt="Captured screenshot" style="max-width:100%;border-radius:10px" /></p>` : ''}
       ${c.text ? `<p class="meta">Source: “${esc(c.text)}”</p>` : ''}
       <div id="p-errors"></div>
-      <div class="row">
+      <div class="row" style="flex-wrap:wrap;gap:8px">
         <button class="btn plain" id="p-confirm">Confirm & create</button>
         <button class="btn soft" id="p-archive">Archive</button>
+        <button class="btn danger small" id="p-discard">Discard</button>
       </div>
     </div>`;
   const fields = host.querySelector('#p-fields')!;
@@ -163,7 +169,7 @@ export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: Sho
       }
       showProposal(body, ui, captureId, {
         proposal: out.proposal,
-        label: `${out.direct ? 'Direct' : 'Live'} Muse proposal • ${out.model} • ${out.latencyMs}ms`,
+        live: { direct: out.direct, model: out.model, latencyMs: out.latencyMs },
         onFinished: opts.onFinished,
       });
     } finally {
@@ -177,14 +183,24 @@ export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: Sho
         (x as HTMLButtonElement).className = `btn ${(x as HTMLButtonElement).dataset.type === p.type ? 'plain' : 'soft'} small`);
       paint();
     }));
+  /** Every finish path clears the card first — the onFinished caller (e.g.
+      hands-free assistant) keeps its sheet open, so the card must go here. */
+  const finish = (outcome: 'confirmed' | 'archived' | 'discarded'): void => {
+    host.innerHTML = '';
+    if (opts.onFinished) opts.onFinished(p, outcome);
+    else renderDesk(body, ui, {});
+  };
   host.querySelector('#p-archive')!.addEventListener('click', () => {
     store.update((d) => {
       const cap = d.captures.find((x) => x.id === captureId);
       if (cap) { cap.status = 'archived'; cap.proposal = p; }
     });
     ui.toast('Archived. The source stays on the desk.');
-    if (opts.onFinished) opts.onFinished(p, 'archived');
-    else renderDesk(body, ui, {});
+    finish('archived');
+  });
+  host.querySelector('#p-discard')!.addEventListener('click', () => {
+    ui.toast('Discarded — nothing created, nothing filed.');
+    finish('discarded');
   });
   host.querySelector('#p-confirm')!.addEventListener('click', () => {
     readFields(fields, p);
@@ -206,8 +222,7 @@ export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: Sho
     ui.sound('done');
     const where = event ? 'timeline' : task ? 'timeline (unscheduled)' : belonging ? 'drawers & shelves' : 'references';
     ui.toast(`Created. Find it in ${where}.`, event ? { action: 'Open day', onAction: () => ui.open('timeline') } : undefined);
-    if (opts.onFinished) opts.onFinished(p, 'confirmed');
-    else renderDesk(body, ui, {});
+    finish('confirmed');
   });
   host.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }

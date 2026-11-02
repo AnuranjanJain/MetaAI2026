@@ -39,6 +39,16 @@ function escXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/** Fit one SVG line into maxPx: shrink the font toward minSize, then
+    ellipsize past maxChars (0 = no cap). SVG text never wraps, so every
+    user-words line on the poster goes through here. Pure. */
+export function fitLine(text: string, maxPx: number, baseSize: number, minSize: number, factor = 0.6, maxChars = 0): { text: string; fontSize: number } {
+  const clean = text.trim();
+  const t = maxChars > 0 && clean.length > maxChars ? `${clean.slice(0, maxChars - 1)}…` : clean;
+  const fontSize = Math.max(minSize, Math.min(baseSize, Math.floor(maxPx / (factor * (t.length || 1)))));
+  return { text: t, fontSize };
+}
+
 /** 600×800 day poster as standalone SVG. Uses the app palette; every word
     comes from the user's own day — nothing invented. */
 export function posterSvg(state: AppState, date: string): string {
@@ -49,18 +59,22 @@ export function posterSvg(state: AppState, date: string): string {
     .slice(0, 4);
   const eventRows = dayEvents.map((e, i) => {
     const y = 380 + i * 54;
-    return `<text x="60" y="${y}" font-size="22" fill="#20302a" font-family="Georgia,serif">${escXml(e.start)} · ${escXml(e.title.slice(0, 28))}</text>`;
+    const row = fitLine(`${e.start} · ${e.title.slice(0, 28)}`, 480, 22, 15);
+    return `<text x="60" y="${y}" font-size="${row.fontSize}" fill="#20302a" font-family="Georgia,serif">${escXml(row.text)}</text>`;
   }).join('');
-  const stats = `${vibe.tasksOpen} open · ${vibe.tasksDone} done · ${vibe.inbox} on desk`
-    + (vibe.streak ? ` · ${vibe.streak}-day streak` : '');
+  const stats = fitLine(
+    `${vibe.tasksOpen} open · ${vibe.tasksDone} done · ${vibe.inbox} on desk`
+    + (vibe.streak ? ` · ${vibe.streak}-day streak` : ''),
+    480, 24, 16);
+  const head = fitLine(vibe.headline, 480, 52, 30, 0.6, 26);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">`
     + `<rect width="600" height="800" rx="28" fill="#f3edde"/>`
     + `<rect x="24" y="24" width="552" height="752" rx="20" fill="#fbf7ec" stroke="#e0d5bd" stroke-width="2"/>`
     + `<text x="60" y="110" font-size="30" fill="#57705d" font-family="Georgia,serif">Pocketroom · ${escXml(date)}</text>`
-    + `<text x="60" y="180" font-size="52" font-weight="bold" fill="#20302a" font-family="Georgia,serif">${escXml(vibe.headline.slice(0, 24))}</text>`
+    + `<text x="60" y="180" font-size="${head.fontSize}" font-weight="bold" fill="#20302a" font-family="Georgia,serif">${escXml(head.text)}</text>`
     + `<text x="60" y="225" font-size="24" fill="#43544c" font-family="system-ui,sans-serif">a ${escXml(vibe.occasion)} day, in one little place</text>`
     + `<rect x="60" y="260" width="480" height="2" fill="#e0d5bd"/>`
-    + `<text x="60" y="310" font-size="24" fill="#a5532f" font-family="system-ui,sans-serif">${escXml(stats)}</text>`
+    + `<text x="60" y="310" font-size="${stats.fontSize}" fill="#a5532f" font-family="system-ui,sans-serif">${escXml(stats.text)}</text>`
     + (eventRows || `<text x="60" y="380" font-size="22" fill="#43544c" font-family="Georgia,serif">Nothing fixed — the day is yours.</text>`)
     + `<rect x="60" y="620" width="480" height="90" rx="14" fill="#e7efe4"/>`
     + `<text x="84" y="658" font-size="21" fill="#20302a" font-family="system-ui,sans-serif">Captain-verified: fixed plans untouched,</text>`

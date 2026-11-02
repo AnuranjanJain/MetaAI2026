@@ -5,20 +5,20 @@ import { store } from '../../store.js';
 import { addDaysKey, buildChecklistForEvent, bumpStreak, createId, demoDayState, nowIso, todayKey } from '../../core/model.js';
 import { captainContext, heuristicCaptain, verifyCaptainPlan, type CaptainPlan } from '../../core/captain.js';
 import { DEMO_LABEL } from '../../core/inference.js';
-import { liveBadge } from '../../core/liveModel.js';
+import { liveStatus } from '../../core/liveModel.js';
 import { resolveCaptain } from '../../core/liveModel.js';
-import { MUSE_MODEL } from '../../core/muse.js';
+import { MUSE_MODEL, shortModel } from '../../core/muse.js';
 import { detectConflicts, freeWindows, overdueTasks, toMinutes } from '../../core/schedule.js';
 import { remindersEnabled, setReminders } from '../../notify.js';
 import { buildDayPlan, type DayPlan } from '../../core/planner.js';
 import type { CalEvent, Id, Task } from '../../core/types.js';
-import { esc, type Ui } from '../../shell.js';
+import { esc, noteHtml, type Ui } from '../../shell.js';
 import { speak, voiceOutputSupported } from '../../voice.js';
 import { renderShare } from '../share.js';
 
 let day = todayKey();
 let pendingPlan: DayPlan | null = null;
-let pendingCaptain: { plan: CaptainPlan; live: boolean; model: string | null; latencyMs: number } | null = null;
+let pendingCaptain: { plan: CaptainPlan; live: boolean; direct: boolean; model: string | null; latencyMs: number } | null = null;
 
 export function renderTimeline(body: HTMLElement, ui: Ui, opts: { focusAdd?: boolean }): void {
   const s = store.state;
@@ -32,32 +32,40 @@ export function renderTimeline(body: HTMLElement, ui: Ui, opts: { focusAdd?: boo
   const doneToday = s.tasks.filter((t) => t.done && t.updatedAt.slice(0, 10) === day);
   const remOn = remindersEnabled();
   const remState = typeof Notification === 'undefined' ? 'unsupported here' : Notification.permission === 'granted' ? (remOn ? 'on' : 'off') : `browser permission: ${Notification.permission}`;
+  const mStatus = liveStatus();
+  const streakBit = s.streak ? ` Captain streak: ${s.streak.count} day(s).` : '';
+  const captainNote = mStatus === 'direct'
+    ? noteHtml('live', 'Muse key', `Your key, this browser (${esc(shortModel(MUSE_MODEL))}). Muse proposes, code verifies: fixed events never move, nothing saves until you tap Accept.${streakBit}`)
+    : mStatus === 'live'
+      ? noteHtml('live', 'Muse on', `Muse proposes (${esc(shortModel(MUSE_MODEL))}), code verifies: fixed events never move, nothing saves until you tap Accept.${streakBit}`)
+      : mStatus === 'offline'
+        ? noteHtml('demo', 'Offline', `Muse unreachable — on-device Captain fallback, no model call. Nothing saves until you tap Accept.${streakBit}`)
+        : noteHtml('demo', 'Demo', `Live is off — on-device Captain, no model call. Nothing saves until you tap Accept.${streakBit}`);
 
   body.innerHTML = `
-    <div class="row" style="margin-bottom:8px">
+    <div class="row day-stepper">
       <button class="btn soft small" data-day="-1">← Prev</button>
-      <div class="grow" style="text-align:center"><strong>${day === todayKey() ? 'Today · ' : ''}${esc(day)}</strong></div>
+      <div class="grow day-label">${day === todayKey() ? 'Today' : 'Day'} · ${esc(day)}</div>
       <button class="btn soft small" data-day="1">Next →</button>
     </div>
-    ${voiceOutputSupported() ? `<p><button class="btn soft small" id="day-say">🔊 Read my day</button></p>` : ''}
-    <p class="meta">🔔 Reminders ${esc(remState)} <button class="btn soft small" id="rem-toggle">${remOn ? 'Turn off' : 'Turn on'}</button></p>
+    <div class="reminder-row"><span>🔔 Reminders · ${esc(remState)}</span><button class="btn soft small" id="rem-toggle">${remOn ? 'Turn off' : 'Turn on'}</button></div>
     ${conflicts.length ? `<div class="card" style="border-color:var(--danger)"><strong>Scheduling conflicts</strong><ul class="clean">${conflicts.map((c) => `<li class="missing">${esc(c)}</li>`).join('')}</ul></div>` : ''}
     ${overdue.length ? `<div class="card" style="border-color:var(--terra)"><strong>Overdue — time passed, not done</strong><ul class="clean">${overdue.slice(0, 8).map((t) => `<li>⏰ ${esc(t.title)} <span class="meta">(was ${esc((t.start ?? '').slice(0, 16).replace('T', ' '))})</span></li>`).join('')}</ul><p><button class="btn soft small" id="over-release">Release all to unscheduled</button></p></div>` : ''}
-    <h3>Fixed plans</h3>
-    ${events.length ? events.map((e) => eventCard(e)).join('') : `<p class="meta">Nothing fixed on this day.</p>`}
-    <h3>Scheduled tasks</h3>
-    ${scheduled.length ? scheduled.map((t) => taskRow(t, true)).join('') : `<p class="meta">No tasks placed yet.</p>`}
+    <h3>Fixed plans <span class="pill">${events.length}</span></h3>
+    ${events.length ? events.map((e) => eventCard(e)).join('') : `<p class="meta">Nothing fixed on this day — the day is yours.</p>`}
+    <h3>Scheduled tasks <span class="pill">${scheduled.length}</span></h3>
+    ${scheduled.length ? scheduled.map((t) => taskRow(t, true)).join('') : `<p class="meta">No tasks placed yet — Captain below can help.</p>`}
     <h3>Unscheduled <span class="pill ${unscheduled.length ? 'butter' : ''}">${unscheduled.length}</span></h3>
     ${unscheduled.length ? unscheduled.map((t) => taskRow(t, false)).join('') : `<p class="meta">Everything has a time. Calm.</p>`}
     ${windows.length ? `<h3>Open windows</h3><ul class="clean">${windows.map((w) => `<li class="meta">${toHM(w.start)} – ${toHM(w.end)} free</li>`).join('')}</ul>` : ''}
     <div class="card"><h3>Morning Captain — dump, review, accept</h3>
-      <div class="demo-note">${esc(liveBadge())} · Muse proposes, code verifies: fixed events never move, nothing saves until you tap Accept.${s.streak ? ` Captain streak: ${s.streak.count} day(s).` : ''}</div>
+      ${captainNote}
       <label class="field">Morning dump (one per line)<textarea id="cap-dump" rows="3" placeholder="e.g. Read chapter 4&#10;Pack adapter&#10;Call mom, 20 min"></textarea></label>
       <p class="row" style="flex-wrap:wrap;gap:8px"><button class="btn plain small" id="cap-go">Captain my day</button><button class="btn soft small" id="demo-day">Try demo day</button></p>
       <div id="cap-out">${pendingCaptain ? '' : '<p class="meta">No Captain plan yet.</p>'}</div>
     </div>
     <div class="card"><h3>Plan my day</h3>
-      <div class="demo-note">${DEMO_LABEL} for schedule proposals. Fixed events never move; you review every change.</div>
+      ${noteHtml('demo', 'Demo', `${esc(DEMO_LABEL)} for schedule proposals. Fixed events never move; you review every change.`)}
       <div class="row">
         <label class="field">Not before<input type="time" id="rev-lo" value="08:00" /></label>
         <label class="field">Finish by<input type="time" id="rev-hi" value="22:00" /></label>
@@ -106,30 +114,49 @@ function eventCard(e: CalEvent): string {
         <option value="">Packing list…</option>
         ${st.routines.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}
       </select>
-      <button class="btn danger small" data-del-event="${e.id}">Delete</button>
+      <button class="btn danger small push-right" data-del-event="${e.id}">Delete</button>
     </div></div></div></div>`;
 }
 
 function taskRow(t: Task, scheduled: boolean): string {
   return `<div class="card tl-block"><div class="row"><div class="grow">
-    <div class="when">${scheduled && t.start ? t.start.slice(11, 16) : 'unscheduled'} · ${t.durationMin} min${t.repeat ? ` · 🔁 ${t.repeat}` : ''}</div>
+    <div class="when">${scheduled && t.start ? t.start.slice(11, 16) : 'unscheduled'} · <span class="pill">${t.durationMin} min</span>${t.repeat ? ` <span class="pill butter">🔁 ${t.repeat}</span>` : ''}</div>
     <h3 class="title">${esc(t.title)}</h3>${t.notes ? `<div class="meta">${esc(t.notes)}</div>` : ''}
-    ${!scheduled ? `<div class="row" style="margin-top:6px"><input type="time" value="12:00" data-slot="${t.id}" aria-label="Time for ${esc(t.title)}" style="width:auto" />
-      <button class="btn soft small" data-place="${t.id}">Place</button></div>` : ''}
-    </div><div><button class="btn soft small" data-done="${t.id}">Done</button>
-    ${scheduled ? `<div style="margin-top:6px"><button class="btn soft small" data-unplace="${t.id}">Unschedule</button></div>` : ''}</div></div></div>`;
+    ${!scheduled
+      ? `<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><input type="time" value="12:00" data-slot="${t.id}" aria-label="Time for ${esc(t.title)}" style="width:auto" />
+      <button class="btn soft small" data-place="${t.id}">Place</button><button class="btn plain small push-right" data-done="${t.id}">Done</button></div>`
+      : `<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><button class="btn soft small push-right" data-unplace="${t.id}">Unschedule</button><button class="btn plain small" data-done="${t.id}">Done</button></div>`}
+    </div></div></div>`;
 }
 
 function wire(body: HTMLElement, ui: Ui, events: CalEvent[], scheduled: Task[], unscheduled: Task[], opts: { focusAdd?: boolean }): void {
-  body.querySelector('#day-say')?.addEventListener('click', () => {
-    const label = day === todayKey() ? 'Today' : day;
-    const bits: string[] = [];
-    if (events.length) bits.push(`${events.length} fixed event${events.length === 1 ? '' : 's'}: ${events.map((e) => `${e.title} at ${e.start}`).join(', ')}`);
-    else bits.push('no fixed events');
-    bits.push(scheduled.length ? `${scheduled.length} scheduled task${scheduled.length === 1 ? '' : 's'}` : 'no scheduled tasks');
-    bits.push(unscheduled.length ? `${unscheduled.length} unscheduled` : 'nothing unscheduled');
-    speak(`${label}. ${bits.join('. ')}.`);
-  });
+  // "Read my day" lives in the sticky sheet head so it never scrolls away.
+  // openSheet attaches the body after render returns, so mount on a
+  // microtask — then body.closest('.sheet') resolves. Re-renders remount
+  // with a fresh closure, so Prev/Next never leaves it stale.
+  if (voiceOutputSupported()) {
+    queueMicrotask(() => {
+      if (!body.isConnected) return;
+      const head = body.closest('.sheet')?.querySelector('.sheet-head');
+      const back = head?.querySelector('[data-close]');
+      if (!head || !back) return;
+      head.querySelector('#day-say')?.remove();
+      const b = document.createElement('button');
+      b.className = 'btn soft small';
+      b.id = 'day-say';
+      b.textContent = '🔊 Read my day';
+      b.addEventListener('click', () => {
+        const label = day === todayKey() ? 'Today' : day;
+        const bits: string[] = [];
+        if (events.length) bits.push(`${events.length} fixed event${events.length === 1 ? '' : 's'}: ${events.map((e) => `${e.title} at ${e.start}`).join(', ')}`);
+        else bits.push('no fixed events');
+        bits.push(scheduled.length ? `${scheduled.length} scheduled task${scheduled.length === 1 ? '' : 's'}` : 'no scheduled tasks');
+        bits.push(unscheduled.length ? `${unscheduled.length} unscheduled` : 'nothing unscheduled');
+        speak(`${label}. ${bits.join('. ')}.`);
+      });
+      back.before(b);
+    });
+  }
   body.querySelectorAll<HTMLButtonElement>('[data-day]').forEach((b) =>
     b.addEventListener('click', () => { day = addDaysKey(day, Number(b.dataset.day)); pendingPlan = null; renderTimeline(body, ui, {}); }));
   body.querySelectorAll<HTMLButtonElement>('[data-done]').forEach((b) =>
@@ -204,11 +231,11 @@ function wire(body: HTMLElement, ui: Ui, events: CalEvent[], scheduled: Task[], 
         const plan: CaptainPlan = { ...live.plan, trace: [...live.plan.trace, `Verified in code: fixed events never move.`] };
         const verdict = verifyCaptainPlan(plan, store.state, day);
         plan.trace.push(verdict.ok ? 'Code check passed.' : `Code check found ${verdict.errors.length} issue(s) — review below.`);
-        pendingCaptain = { plan, live: true, model: live.model, latencyMs: live.latencyMs };
+        pendingCaptain = { plan, live: true, direct: live.direct, model: live.model, latencyMs: live.latencyMs };
       } else {
         const plan = heuristicCaptain(store.state, day, dump);
         plan.trace.unshift('Muse unreachable — local Captain fallback, no model call.');
-        pendingCaptain = { plan, live: false, model: null, latencyMs: 0 };
+        pendingCaptain = { plan, live: false, direct: false, model: null, latencyMs: 0 };
       }
       paintCaptain(body, ui);
     } catch (e) {
@@ -336,12 +363,12 @@ function paintCaptain(body: HTMLElement, ui: Ui): void {
   const evName = (id: Id) => st.events.find((e) => e.id === id)?.title ?? id;
   const clothName = (id: Id) => st.clothing.find((c) => c.id === id)?.name ?? id;
   const badge = pending.live
-    ? `Live Captain • ${pending.model ?? MUSE_MODEL} • ${pending.latencyMs}ms`
-    : 'Local Captain fallback • no model call';
+    ? noteHtml('live', pending.direct ? 'Muse key' : 'Muse on', `Captain plan • ${esc(shortModel(pending.model ?? MUSE_MODEL))} • ${Math.round(pending.latencyMs / 1000)}s. ${esc(pending.plan.notes)}`)
+    : noteHtml('demo', 'Local', `Local Captain fallback • no model call. ${esc(pending.plan.notes)}`);
   host.innerHTML = `
     <div class="card" style="border-color:var(--sage-deep)">
       <h3>Captain's proposal — nothing applied yet</h3>
-      <div class="demo-note">${esc(badge)}. ${esc(pending.plan.notes)}</div>
+      ${badge}
       ${pending.plan.slots.length ? `<ul class="clean">${pending.plan.slots.map((s2) => `<li>🧩 <strong>${esc(s2.start)}</strong> · ${esc(s2.title)} (${s2.durationMin} min)${s2.taskId ? '' : ' <span class="meta">(new)</span>'}</li>`).join('')}</ul>` : '<p class="meta">No slots proposed.</p>'}
       ${pending.plan.prep.length ? `<p class="meta">🎒 Prep: ${pending.plan.prep.map((p) => `${esc(evName(p.eventId))}: ${esc(p.text)}`).join(' · ')}</p>` : ''}
       ${pending.plan.leaveBy.length ? `<p class="meta">🚶 Leave by: ${pending.plan.leaveBy.map((l) => `${esc(l.at)} for ${esc(evName(l.eventId))}`).join(' · ')}</p>` : ''}

@@ -46,20 +46,34 @@ export function renderTaskDock(el: HTMLElement | null, state: AppState, opts: Ta
 
 // ---------- record player (bottom, separate from the top) ----------
 
+/** Chunky filled transport glyphs in one stroke language. */
+const icon = (path: string): string =>
+  `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${path}"/></svg>`;
+const ICONS = {
+  play: icon('M8 5v14l11-7z'),
+  pause: icon('M7 5h4v14H7zM13 5h4v14h-4z'),
+  prev: icon('M6 5h2.6v14H6zM18.5 5v14L9.5 12z'),
+  next: icon('M15.4 5H18v14h-2.6zM5.5 5v14l9-7z'),
+  heart: icon('M12 20.5C7 16.5 3.5 13.3 3.5 9.8 3.5 7.2 5.5 5 8 5c1.6 0 3.1.9 4 2.3C12.9 5.9 14.4 5 16 5c2.5 0 4.5 2.2 4.5 4.8 0 3.5-3.5 6.7-8.5 10.7z'),
+  upload: icon('M11 3h2v9h3.5L12 16.5 7.5 12H11zM4 17.5h16V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z'),
+};
+
 let musicRoot: HTMLElement | null = null;
 let subscribed = false;
 
-export function renderMusicPlayer(el: HTMLElement | null): void {
+export function renderMusicPlayer(el: HTMLElement | null, opts: { onOpenMusic: () => void }): void {
   if (!el) return;
   musicRoot = el;
   if (!subscribed) { player.onChange(updateMusicUi); subscribed = true; }
   el.innerHTML = `
     <div class="player-card" data-player-card>
       <div class="player-top">
-        <div class="vinyl-wrap" aria-hidden="true">
-          <div class="vinyl"></div>
-          <div class="tonearm"><span class="tonearm-head"></span></div>
-        </div>
+        <button class="vinyl-btn" data-music="open" aria-label="Open playlists" title="Open playlists">
+          <div class="vinyl-wrap" aria-hidden="true">
+            <div class="vinyl"></div>
+            <div class="tonearm"><span class="tonearm-head"></span></div>
+          </div>
+        </button>
         <div class="player-info">
           <div class="player-kicker" data-music-kicker>Now playing</div>
           <div class="track-title" data-music-title></div>
@@ -68,19 +82,32 @@ export function renderMusicPlayer(el: HTMLElement | null): void {
       </div>
       <div class="progress music-progress"><span data-music-bar></span></div>
       <div class="player-controls">
-        <button class="icon-btn" data-music="prev" aria-label="Previous track" title="Previous track">⏮</button>
-        <button class="icon-btn on" data-music="toggle" data-music-toggle aria-label="Play or pause" title="Play / pause">▶</button>
-        <button class="icon-btn" data-music="next" aria-label="Next track" title="Next track">⏭</button>
-        <button class="icon-btn fav-btn" data-music="fav" data-music-fav aria-label="Favourite this track" title="Favourite">♥</button>
+        <button class="icon-btn" data-music="prev" aria-label="Previous track" title="Previous track">${ICONS.prev}</button>
+        <button class="icon-btn on" data-music="toggle" data-music-toggle aria-label="Play or pause" title="Play / pause">${ICONS.play}</button>
+        <button class="icon-btn" data-music="next" aria-label="Next track" title="Next track">${ICONS.next}</button>
+        <button class="icon-btn fav-btn" data-music="fav" data-music-fav aria-label="Favourite this track" title="Favourite">${ICONS.heart}</button>
+        <button class="icon-btn" data-music="upload" aria-label="Upload songs" title="Upload songs — kept in this browser">${ICONS.upload}</button>
       </div>
+      <p class="music-note" data-music-note></p>
+      <input type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.webm" multiple hidden data-music-input />
     </div>`;
+  const upInput = el.querySelector<HTMLInputElement>('[data-music-input]');
   el.querySelectorAll<HTMLButtonElement>('[data-music]').forEach((b) =>
     b.addEventListener('click', () => {
       if (b.dataset.music === 'toggle') player.toggle();
       else if (b.dataset.music === 'next') player.next();
       else if (b.dataset.music === 'prev') player.prev();
       else if (b.dataset.music === 'fav') player.toggleFavorite();
+      else if (b.dataset.music === 'upload') upInput?.click();
+      else if (b.dataset.music === 'open') opts.onOpenMusic();
     }));
+  upInput?.addEventListener('change', () => {
+    const files = [...(upInput.files ?? [])];
+    upInput.value = '';
+    if (!files.length) return;
+    // The card refreshes itself through onChange — uploads play on arrival.
+    void files.reduce((p, f) => p.then(() => player.addUpload(f)), Promise.resolve());
+  });
   updateMusicUi();
 }
 
@@ -91,13 +118,19 @@ function updateMusicUi(): void {
   const t = player.track;
   root.querySelector('[data-player-card]')?.classList.toggle('playing', player.playing);
   const kicker = root.querySelector('[data-music-kicker]');
-  if (kicker) kicker.textContent = t.custom ? 'My music' : 'Now playing';
+  if (kicker) {
+    const active = player.activePlaylist();
+    kicker.textContent = active ? `▶ ${active.name}` : t.custom ? 'My music' : 'Now playing';
+  }
   const title = root.querySelector('[data-music-title]');
   if (title) title.textContent = t.title;
   const artist = root.querySelector('[data-music-artist]');
-  if (artist) artist.textContent = t.custom ? 'your upload' : `${t.artist} · ${t.mood}`;
+  if (artist) {
+    const pos = `${player.index + 1}/${player.queue.length}`;
+    artist.textContent = t.custom ? `your upload · ${pos}` : `${t.artist} · ${t.mood} · ${pos}`;
+  }
   const toggle = root.querySelector('[data-music-toggle]');
-  if (toggle) toggle.textContent = player.playing ? '⏸' : '▶';
+  if (toggle) toggle.innerHTML = player.playing ? ICONS.pause : ICONS.play;
   const bar = root.querySelector<HTMLElement>('[data-music-bar]');
   if (bar) bar.style.width = `${Math.round(player.progress() * 100)}%`;
   const fav = root.querySelector<HTMLElement>('[data-music-fav]');
@@ -105,4 +138,6 @@ function updateMusicUi(): void {
     fav.classList.toggle('fav-on', player.isFavorite());
     fav.setAttribute('aria-pressed', String(player.isFavorite()));
   }
+  const note = root.querySelector('[data-music-note]');
+  if (note) note.textContent = player.notice;
 }

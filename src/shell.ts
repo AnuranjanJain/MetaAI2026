@@ -31,6 +31,12 @@ export interface Ui {
 
 type View = 'room' | 'list';
 
+/** Muse loop mark: a two-lobed loop in the theme's line language. */
+const MUSE_MARK = `<svg class="muse-mark" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 12c-2-4-5-5-7-5-2.2 0-3 2.2-3 5s.8 5 3 5c2 0 5-1 7-5zm0 0c2 4 5 5 7 5 2.2 0 3-2.2 3-5s-.8-5-3-5c-2 0-5 1-7 5z" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+/** Which mix shows its tracks in the Clatter panel (session UI state). */
+let expandedPlaylist: string | null = null;
+
 const TITLES: Record<Area, string> = {
   desk: 'Desk — saved intentions',
   doorway: 'Doorway — leaving prep',
@@ -103,7 +109,12 @@ export class Shell {
     this.renderTopbar();
     this.renderStage();
     this.renderTasks();
-    renderMusicPlayer(this.musicPlayer);
+    renderMusicPlayer(this.musicPlayer, {
+      onOpenMusic: () => {
+        if (player.activePlaylistId) expandedPlaylist = player.activePlaylistId;
+        this.openSheet('clatter');
+      },
+    });
   }
 
   /** Bottom-left dock: today's open tasks, with a little show/hide button. */
@@ -141,10 +152,11 @@ export class Shell {
           <button data-view="room" aria-pressed="${this.view === 'room'}">Room</button>
           <button data-view="list" aria-pressed="${this.view === 'list'}">List</button>
         </div>
-        ${next ? `<span class="chip" title="Next commitment">↗ ${esc(next)}</span>` : `<span class="chip">No more events today</span>`}
+        ${next ? `<span class="chip" data-chip="next" title="Next commitment">↗ ${esc(next)}</span>` : `<span class="chip" data-chip="next">No more events today</span>`}
         ${total > 0 ? `<button class="chip ${packed < total ? 'warn' : ''}" data-act="door">${packed}/${total} packed</button>` : ''}
         ${inbox > 0 ? `<button class="chip terra" data-act="desk">📝 ${inbox} new on desk</button>` : ''}
-        ${ready ? `<span class="chip">✓ All packed — ready</span>` : ''}
+        ${ready ? `<span class="chip" data-chip="ready">✓ All packed — ready</span>` : ''}
+        <div class="t-break" aria-hidden="true"></div>
         <p class="rail-note hide-late">Your room, at a glance.<br/>Tap the desk to capture, the window for your day, the doorway before leaving — or use List.</p>
       </div>
       <div class="rail rail-right">
@@ -154,11 +166,13 @@ export class Shell {
           <button class="icon-btn ${s.sound.enabled && !s.sound.muted ? 'on' : ''}" data-act="sound" aria-label="Sound settings" title="Sound">♪</button>
           <button class="icon-btn" data-act="undo" aria-label="Undo last change" title="Undo" ${store.canUndo ? '' : 'disabled'}>↩</button>
         </div>
-        ${doneToday > 0 ? `<span class="chip" title="Tasks completed today">✓ ${doneToday} done today</span>` : ''}
-        <button class="chip ${mStatus === 'live' || mStatus === 'direct' ? '' : 'warn'}" data-act="keys" title="Meta model path — tap for AI setup">${esc(mBadge)}</button>
+        ${doneToday > 0 ? `<span class="chip chip-block" data-chip="done" title="Tasks completed today">✓ ${doneToday} done today</span>` : ''}
+        <div class="rail-sep" aria-hidden="true"></div>
+        <button class="muse-badge rail-wide ${mStatus === 'live' || mStatus === 'direct' ? 'on' : 'off'}" data-act="keys" title="${esc(mBadge)} — tap for AI setup">${MUSE_MARK}<span>${mStatus === 'live' || mStatus === 'direct' ? 'Muse ON' : 'Muse OFF'}</span></button>
         ${voiceInputSupported() ? `<button class="btn soft small rail-wide" data-act="assistant">🎙️ Voice assistant</button>` : ''}
         <button class="btn soft small rail-wide" data-act="decor">🎨 Decorate wall</button>
-        <span class="chip hide-late" title="${saveTitle}">${saveDot} ${store.saveState}</span>
+        <div class="rail-sep" aria-hidden="true"></div>
+        <span class="chip chip-block hide-late" data-chip="save" title="${saveTitle}">${saveDot} ${store.saveState}</span>
         <p class="rail-note hide-late">${mStatus === 'demo' ? 'Everything stays on this device.' : 'Live Muse reads transcripts you send; nothing saves without your tap.'}</p>
       </div>`;
     this.topbar.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((b) =>
@@ -448,23 +462,49 @@ export class Shell {
     const s = store.state.sound;
     const areas: ('desk' | 'doorway' | 'wardrobe' | 'shelf' | 'window')[] = ['desk', 'doorway', 'wardrobe', 'shelf', 'window'];
     const uploads = player.custom;
+    const lists = player.playlists;
+    const active = player.activePlaylist();
+    const titles = new Map(player.library.map((q) => [q.key, q.title]));
     body.innerHTML = `
       <p class="meta">Clatter adds small local sounds to useful moments. Off by default, always mutable, never required.</p>
       <div class="card"><div class="row"><div class="grow"><h3>Room sounds</h3>
         <div class="meta">Precomposed motifs, played on this device. No recording, no network.</div></div>
         <button class="btn ${s.enabled ? 'plain' : 'soft'} small" data-snd="toggle">${s.enabled ? 'On' : 'Off'}</button></div></div>
       <div class="card"><div class="row"><div class="grow"><h3>My music</h3>
-        <div class="meta">Your own audio files, kept in this browser. They play through the record player.</div></div>
+        <div class="meta">Your own audio files, kept in this browser (up to 200). They play through the record player. Pick several at once.</div></div>
         <button class="btn soft small" data-up="pick">⤒ Upload</button>
         <input type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.webm" multiple hidden data-up-input /></div>
         ${uploads.length ? `<ul class="upload-list">${uploads.map((u, i) => `
           <li>
             <button class="btn ${player.track.key === u.id && player.playing ? 'plain' : 'soft'} small" data-up-play="${i}">${player.track.key === u.id && player.playing ? '⏸' : '▶'}</button>
             <span class="upload-name">${esc(u.title)}</span>
+            ${lists.length ? `<select data-up-list="${esc(u.id)}" aria-label="Add ${esc(u.title)} to a playlist" title="Add to a playlist">
+              <option value="">＋ List…</option>
+              ${lists.map((p) => `<option value="${esc(p.id)}" ${p.keys.includes(u.id) ? 'disabled' : ''}>${esc(p.name)}</option>`).join('')}
+            </select>` : ''}
             <button class="btn plain small" data-up-del="${esc(u.id)}" aria-label="Remove upload ${esc(u.title)}" title="Remove">✕</button>
           </li>`).join('')}</ul>`
           : `<p class="meta">Nothing uploaded yet.</p>`}
         ${player.notice ? `<p class="music-note">${esc(player.notice)}</p>` : ''}</div>
+      <div class="card"><div class="row"><div class="grow"><h3>Playlists</h3>
+        <div class="meta">Your own mixes — uploads and room loops together. Names and orders stay in this browser.</div></div></div>
+        <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">
+          <input type="text" id="pl-name" placeholder="New mix name" maxlength="40" aria-label="New playlist name" style="flex:1;min-width:140px" />
+          <button class="btn soft small" data-pl="create">＋ Create</button></div>
+        ${active ? `<p class="meta">Playing “${esc(active.name)}” — <button class="btn soft small" data-pl="exit">Back to everything</button></p>` : ''}
+        ${lists.length ? `<ul class="upload-list">${lists.map((p) => `
+          <li>
+            <button class="btn ${active?.id === p.id && player.playing ? 'plain' : 'soft'} small" data-pl-play="${esc(p.id)}" aria-label="Play ${esc(p.name)}" title="Play">${active?.id === p.id && player.playing ? '⏸' : '▶'}</button>
+            <span class="upload-name">${esc(p.name)} <span class="pill">${p.keys.length}</span></span>
+            <button class="btn soft small" data-pl-expand="${esc(p.id)}" aria-expanded="${expandedPlaylist === p.id}" aria-label="Tracks in ${esc(p.name)}" title="Tracks">${expandedPlaylist === p.id ? '▾' : '▸'}</button>
+            <button class="btn plain small" data-pl-del="${esc(p.id)}" aria-label="Delete ${esc(p.name)}" title="Delete">✕</button>
+          </li>
+          ${expandedPlaylist === p.id ? `<li class="pl-members"><ul>${p.keys.map((k) => `
+            <li><span class="upload-name">${esc(titles.get(k) ?? 'Missing track')}</span>
+            <button class="btn danger small" data-pl-rm="${esc(p.id)}" data-pl-key="${esc(k)}" aria-label="Remove ${esc(titles.get(k) ?? k)}" title="Remove">✕</button></li>`).join('') || '<li><span class="meta">Empty — add the current track below, or pick a list on any upload.</span></li>'}
+            <li><button class="btn soft small" data-pl-addcur="${esc(p.id)}">＋ Add current track</button></li>
+          </ul></li>` : ''}`).join('')}</ul>`
+          : `<p class="meta">No mixes yet — name one above.</p>`}</div>
       <div class="card"><div class="row"><div class="grow"><h3>Mute everything</h3></div>
         <button class="btn soft small" data-snd="mute">${s.muted ? 'Unmute' : 'Mute'}</button></div></div>
       <div class="card"><h3>Today’s soundtrack</h3>
@@ -496,12 +536,86 @@ export class Shell {
         const id = player.custom[at]?.id;
         if (!id) return;
         if (player.track.key === id && player.playing) player.pause();
-        else player.play(at); // uploads sit first in the queue, so index == position
+        else {
+          // Queue positions shift in mix mode — always resolve by key.
+          let qi = player.queue.findIndex((q) => q.key === id);
+          if (qi < 0) {
+            player.exitPlaylist();
+            qi = player.queue.findIndex((q) => q.key === id);
+          }
+          if (qi >= 0) player.play(qi);
+        }
         this.openSheet('clatter');
       }));
     body.querySelectorAll<HTMLButtonElement>('[data-up-del]').forEach((b) =>
       b.addEventListener('click', () => {
         void player.removeUpload(b.dataset.upDel!).then(() => this.openSheet('clatter'));
+      }));
+    body.querySelectorAll<HTMLSelectElement>('[data-up-list]').forEach((sel) =>
+      sel.addEventListener('change', () => {
+        const pid = sel.value;
+        const uid = sel.dataset.upList!;
+        if (!pid) return;
+        const pl = player.playlists.find((p) => p.id === pid);
+        if (player.addToPlaylist(pid, uid)) this.toast(`Added to “${pl?.name ?? 'mix'}”.`);
+        else this.toast('Already in that mix.');
+        this.openSheet('clatter');
+      }));
+    const plName = body.querySelector<HTMLInputElement>('#pl-name');
+    const createMix = (): void => {
+      const name = plName?.value.trim() ?? '';
+      if (!name) { this.toast('Name the mix first.'); return; }
+      const pl = player.createPlaylist(name);
+      if (!pl) { this.toast('Mix shelf is full (50).'); return; }
+      expandedPlaylist = pl.id;
+      this.toast(`Mix “${pl.name}” ready — add tracks to it.`);
+      this.openSheet('clatter');
+    };
+    body.querySelector<HTMLButtonElement>('[data-pl="create"]')?.addEventListener('click', createMix);
+    plName?.addEventListener('keydown', (e) => { if (e.key === 'Enter') createMix(); });
+    body.querySelector<HTMLButtonElement>('[data-pl="exit"]')?.addEventListener('click', () => {
+      player.exitPlaylist();
+      this.openSheet('clatter');
+    });
+    body.querySelectorAll<HTMLButtonElement>('[data-pl-play]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const id = b.dataset.plPlay!;
+        if (player.activePlaylistId === id) player.toggle();
+        else {
+          const pl = player.playlists.find((p) => p.id === id);
+          const have = new Set(player.library.map((q) => q.key));
+          if (!pl || !pl.keys.some((k) => have.has(k))) this.toast('That mix is empty — add tracks first.');
+          else player.playPlaylist(id);
+        }
+        this.openSheet('clatter');
+      }));
+    body.querySelectorAll<HTMLButtonElement>('[data-pl-expand]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const id = b.dataset.plExpand!;
+        expandedPlaylist = expandedPlaylist === id ? null : id;
+        this.openSheet('clatter');
+      }));
+    body.querySelectorAll<HTMLButtonElement>('[data-pl-del]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const pl = player.playlists.find((p) => p.id === b.dataset.plDel);
+        if (player.deletePlaylist(b.dataset.plDel!)) {
+          if (expandedPlaylist === b.dataset.plDel) expandedPlaylist = null;
+          this.toast(`Mix “${pl?.name ?? ''}” deleted. Tracks stay in your library.`);
+        }
+        this.openSheet('clatter');
+      }));
+    body.querySelectorAll<HTMLButtonElement>('[data-pl-rm]').forEach((b) =>
+      b.addEventListener('click', () => {
+        player.removeFromPlaylist(b.dataset.plRm!, b.dataset.plKey!);
+        this.openSheet('clatter');
+      }));
+    body.querySelectorAll<HTMLButtonElement>('[data-pl-addcur]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const id = b.dataset.plAddcur!;
+        const pl = player.playlists.find((p) => p.id === id);
+        if (player.addToPlaylist(id, player.track.key)) this.toast(`Added “${player.track.title}” to “${pl?.name}”.`);
+        else this.toast('That track is already in this mix.');
+        this.openSheet('clatter');
       }));
   }
 
@@ -553,4 +667,10 @@ function readPosterImage(file: File): Promise<string> {
 
 export function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Provenance note: a sticker kicker (DEMO / MUSE ON…) plus one honest body
+    line. bodyHtml must already be escaped. */
+export function noteHtml(kind: 'demo' | 'live', kicker: string, bodyHtml: string): string {
+  return `<div class="note note-${kind}"><span class="note-kicker">${esc(kicker)}</span><span class="note-body">${bodyHtml}</span></div>`;
 }

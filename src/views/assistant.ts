@@ -6,8 +6,8 @@ import { store } from '../store.js';
 import { buildChecklistForEvent, createId, nowIso, todayKey } from '../core/model.js';
 import { applySlotAnswer, missingSlots, propose, searchBelongings, DEMO_LABEL, type ProposalSlot } from '../core/inference.js';
 import { deskSummary, findRenamable, haveAnswer, matchEvent, matchRoutine, summarizeCreated, summarizeProposal, wardrobeAnswer, wearPick, whereAnswer } from '../core/assistant.js';
-import { DEMO_OFF_LABEL, DIRECT_LABEL, LIVE_LABEL, OFFLINE_LABEL, liveBadge, liveModeEnabled, liveStatus, resolveIntent, setLiveMode, transcribeDirect, transcribeViaMuse, warmProxy } from '../core/liveModel.js';
-import { MUSE_MODEL } from '../core/muse.js';
+import { DEMO_OFF_LABEL, OFFLINE_LABEL, liveBadge, liveModeEnabled, liveStatus, resolveIntent, setLiveMode, transcribeDirect, transcribeViaMuse, warmProxy } from '../core/liveModel.js';
+import { shortModel } from '../core/muse.js';
 import { TRANSCRIBE_MODEL } from '../core/transcribe.js';
 import { getKey, hasKey } from '../core/byok.js';
 import { clipSupported, startClip } from '../audioRecord.js';
@@ -276,7 +276,7 @@ async function run(
   const pathEl = body.querySelector('#as-path');
   if (pathEl) {
     pathEl.textContent = resolved.live
-      ? `${resolved.direct ? 'Direct' : 'Live'} Muse • ${resolved.model} • ${resolved.latencyMs}ms`
+      ? `${resolved.direct ? 'Direct' : 'Live'} Muse • ${shortModel(resolved.model ?? '')} • ${Math.round(resolved.latencyMs / 1000)}s`
       : resolved.offline
         ? `${OFFLINE_LABEL} • local ${resolved.latencyMs}ms`
         : `${DEMO_OFF_LABEL} • local ${resolved.latencyMs}ms`;
@@ -597,10 +597,12 @@ async function run(
   setStatus(body, summarizeProposal(p));
   showProposal(body, ui, capture.id, {
     proposal: p,
-    label: resolved.direct ? `${DIRECT_LABEL} • ${MUSE_MODEL}` : resolved.live ? `${LIVE_LABEL} • ${MUSE_MODEL}` : undefined,
+    live: resolved.live && resolved.model ? { direct: resolved.direct, model: resolved.model } : undefined,
     onFinished: (final, outcome) => {
       if (outcome === 'confirmed') speak(summarizeCreated(final));
       if (!handsFreeEnabled()) close();
+      else if (outcome === 'discarded') setStatus(body, 'Discarded — nothing created.');
+      else if (outcome === 'archived') setStatus(body, 'Archived. The source stays on the desk.');
     },
   });
   await offerVoiceConfirm(body, alive, 'Create this?', '#p-confirm', '#p-archive');

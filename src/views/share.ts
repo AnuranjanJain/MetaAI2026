@@ -7,7 +7,7 @@ import { dayVibe, posterSvg, shareText, xIntentUrl } from '../core/share.js';
 import { dreamWords } from '../core/dream.js';
 import { dreamDirect, dreamViaMuse, liveModeEnabled } from '../core/liveModel.js';
 import { getKey, hasKey } from '../core/byok.js';
-import { esc, type Ui } from '../shell.js';
+import { esc, noteHtml, type Ui } from '../shell.js';
 
 export function renderShare(body: HTMLElement, ui: Ui, date: string): void {
   const s = store.state;
@@ -16,8 +16,8 @@ export function renderShare(body: HTMLElement, ui: Ui, date: string): void {
   const svg = posterSvg(s, date);
   body.innerHTML = `
     <p class="meta">${esc(vibe.headline)} — ${vibe.events} event(s), ${vibe.tasksOpen} open, ${vibe.tasksDone} done.</p>
-    <div id="sh-poster" style="max-width:320px;border-radius:12px;overflow:hidden;border:1px solid var(--line)">${svg}</div>
-    <p class="meta" id="sh-dream-note">On-device SVG poster above. Dream one with Muse Image instead — explicit tap, your day words only.</p>
+    <div id="sh-poster" class="poster-frame">${svg}</div>
+    <div id="sh-dream-note">${noteHtml('demo', 'Print', 'On-device SVG poster above. Dream one with Muse Image instead — explicit tap, your day words only.')}</div>
     <p class="row" style="flex-wrap:wrap;gap:8px;margin-top:10px">
       <button class="btn plain small" id="sh-png">Download card (PNG)</button>
       <button class="btn soft small" id="sh-svg">Poster (SVG)</button>
@@ -56,7 +56,7 @@ export function renderShare(body: HTMLElement, ui: Ui, date: string): void {
     const note = body.querySelector('#sh-dream-note')!;
     const frame = body.querySelector('#sh-poster')!;
     btn.disabled = true;
-    note.textContent = 'Dreaming with Muse Image… (up to a minute)';
+    note.innerHTML = noteHtml('live', 'Muse on', 'Dreaming with Muse Image… (up to a minute)');
     try {
       const words = dreamWords(store.state, date);
       const out = hasKey()
@@ -64,15 +64,15 @@ export function renderShare(body: HTMLElement, ui: Ui, date: string): void {
         : liveModeEnabled() ? await dreamViaMuse(words) : null;
       if (!body.isConnected) return;
       if (!out) {
-        note.textContent = 'Dream unavailable — the SVG poster above still works. Check Live status or your key.';
+        note.innerHTML = noteHtml('demo', 'Demo', 'Dream unavailable — the SVG poster above still works. Check Live status or your key.');
         ui.toast('Muse Image unavailable right now.');
         return;
       }
-      frame.innerHTML = `<img src="${out.image}" alt="Dreamed day poster" style="width:100%;display:block" />`;
-      note.textContent = `Dreamed by ${out.direct ? 'Direct' : 'Live'} Muse Image • ${out.model} • ${Math.round(out.latencyMs / 1000)}s. Right-click / long-press to save.`;
+      frame.innerHTML = `<img src="${out.image}" alt="Dreamed day poster" />`;
+      note.innerHTML = noteHtml('live', out.direct ? 'Muse key' : 'Muse on', `Dreamed by Muse Image • ${Math.round(out.latencyMs / 1000)}s. Right-click / long-press to save.`);
       ui.toast('Dream poster ready.');
     } catch {
-      if (body.isConnected) note.textContent = 'Dream hiccuped — the SVG poster above still works.';
+      if (body.isConnected) note.innerHTML = noteHtml('demo', 'Demo', 'Dream hiccuped — the SVG poster above still works.');
     } finally {
       if (body.isConnected) btn.disabled = false;
     }
