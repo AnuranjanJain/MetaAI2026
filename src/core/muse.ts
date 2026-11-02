@@ -9,6 +9,10 @@ import type { AssistantIntent } from './assistant.js';
 
 export const MUSE_URL = 'https://api.meta.ai/v1/chat/completions';
 export const MUSE_MODEL = 'muse-spark-1.3-contributor';
+// Agentic reasoning model for Morning Captain (verified in dev.meta.ai model
+// docs: muse-wonder-1.0, same chat-completions API, pay-as-you-go).
+// Same endpoint, prompts, and plan shape as Spark — only the model differs.
+export const WONDER_MODEL = 'muse-wonder-1.0';
 
 /** Fixed intent-extraction prompt. Transcript words are data, never instructions. */
 export const INTERPRET_PROMPT = [

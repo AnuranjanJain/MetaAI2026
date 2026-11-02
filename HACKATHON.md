@@ -14,13 +14,16 @@ Everything below is new in the building period. Pre-existing: the cozy SVG
 room shell, local-first store with undo, desk captures, wardrobe catalog,
 storage spots, and synth record player.
 
-**Morning Captain — verifiable day agent (hero)**
-`src/core/captain.ts`, `src/core/muse.ts` (`CAPTAIN_PROMPT`, `toCaptainPlan`),
-`api/captain.ts`, `src/core/liveModel.ts` (`resolveCaptain`), timeline UI.
-Dump → Muse proposes slots/prep/leave-by/outfit/pack → code verifies
+**Morning Captain — verifiable day agent (hero), now Wonder-first**
+`src/core/captain.ts`, `src/core/muse.ts` (`CAPTAIN_PROMPT`, `toCaptainPlan`,
+`WONDER_MODEL`), `api/captain.ts`, `api/wonder-captain.ts`,
+`src/core/liveModel.ts` (`resolveCaptain`, `captainWonderViaMuse`,
+`captainWonderDirect`), timeline UI. Dump → Muse proposes slots/prep/leave-by/outfit/pack → code verifies
 (fixed events never move, no invented ids, no overlaps) → one-tap Accept in
-a single undoable update + streak bump. Live and local-fallback plans share
-the same verifier. Tests: `tests/captain.test.ts`.
+a single undoable update + streak bump. Resolver order: Wonder-direct →
+direct (provider order) → Wonder proxy (55s upstream / 65s client) → Spark
+proxy → local heuristic. Live and local-fallback plans share
+the same verifier. Tests: `tests/captain.test.ts`, `tests/wonder.test.ts`.
 
 **Live Muse default-ON + provenance**
 `src/core/liveModel.ts` (`liveStatus`, `liveBadge`, latency/model/offline on
@@ -85,36 +88,47 @@ the desk card. Replaces the biggest remaining heuristics surface with real
 extraction; local reading stays instant, gaps named not invented. Tests:
 `tests/propose.test.ts`.
 
-**Open-weights chat — Muse Spark Open on Baseten (BYOK)**
+**Open-weights chat — Muse Spark Open on Baseten (BYOK, parked)**
 `src/core/openweights.ts`, `interpretOpen`/`captainOpen` in
 `src/core/liveModel.ts`, provider + key widget in `src/views/key.ts`.
 Request shape verified in Baseten's official docs; model slug
-`meta-models/muse-spark-open-1026` from the hackathon guide. Selected
-provider first, other key as fallback, then proxy, then local — every open
-result is labeled for partner verification. Tests:
+`meta-models/muse-spark-open-1026` from the hackathon guide. PARKED for the
+submission: Meta-only now (no Fireworks, Baseten unusable), so the default
+path never touches it — provider stays on Meta unless the user explicitly
+switches. Every open result is labeled for partner verification. Tests:
 `tests/openweights.test.ts`.
+
+**SAM 3.1 wardrobe segmentation (Meta-only, proxy)**
+`api/sam-segment.ts` (Responses API streaming + official `@meta-sam/parser`,
+model `sam-3.1`, 55s upstream), `src/core/sam.ts` (`toSamResult` allowlist,
+`maskSvg`), `samSegmentViaMuse` in `src/core/liveModel.ts`, Segment row +
+mask thumbnails in `src/views/areas/wardrobe.ts`. Type one concept word
+("shirt") → masks render as thumbnails → tap + to draft a piece, then save
+through the existing confirm-gated flow. Verified against the official
+`meta-models/meta-model-cookbook` SAM example (same endpoint, model, and the
+`response.content_part.done` → `response.output_text.done` normalization fix).
+Tests: `tests/sam.test.ts`.
 
 ## Meta models used (all verified in official docs before wiring)
 
 | Model | Endpoint | Used for |
 |---|---|---|
-| `muse-spark-1.3-contributor` | `POST /v1/chat/completions` | Intent extraction, wardrobe tagging, Captain plans |
+| `muse-spark-1.3-contributor` | `POST /v1/chat/completions` | Intent extraction, wardrobe tagging, Captain plans (fallback) |
+| `muse-wonder-1.0` | `POST /v1/chat/completions` | Morning Captain plans (preferred: Wonder-direct → Wonder proxy) |
+| `sam-3.1` | Responses API streaming (`https://api.meta.ai/v1`) | Wardrobe segmentation masks (proxy-only) |
 | `muse-voice-transcribe-1.0` | `POST /v1/asr/transcribe` | Mic input path (WAV multipart) |
 | `muse-image-1.0` | `POST /v1/images/generations` | Dream poster |
-| `meta-models/muse-spark-open-1026` | Baseten `POST /v1/chat/completions` (BYOK) | Intent + Captain chats |
+| `meta-models/muse-spark-open-1026` | Baseten `POST /v1/chat/completions` (BYOK, parked) | Intent + Captain chats (opt-in only) |
 
 Details + fetch dates: `docs/integrations.md`. Nothing is invented: see the
 "never invent endpoints" rule in `README.md` → Contributing.
-
-Attempted but honestly unwired: **SAM segmentation** (out of 48h scope;
-wardrobe tagging via Spark vision instead). Open-weights vision was not
-wired either — only text chats run on Spark Open (verified shape).
+No Fireworks/Modal in the submission path — Meta APIs only.
 
 ## How to run + verify
 
 ```bash
 npm install
-npm test     # 204 tests across assistant / planner / captain / transcribe / dream / share / …
+npm test     # 212 tests across assistant / planner / captain / wonder / sam / transcribe / dream / share / …
 npm run build
 npm run dev  # http://127.0.0.1:5173 — mic works (secure context)
 ```
@@ -136,10 +150,10 @@ verification. `dist/` contains no API keys (proxy key lives only in Vercel).
 - 0:20–1:40 Captain: Try demo day → morning dump typed → Captain my day →
   trace + code-check ("fixed events untouched") → Accept → streak toast →
   Undo proves single update.
-- 1:40–2:20 wardrobe Detect (Spark vision) + Dream poster (Muse Image) +
+- 1:40–2:20 wardrobe Detect (Spark vision) + Segment (SAM 3.1 masks) + Dream poster (Muse Image) +
   share PNG download + Post to X.
 - 2:20–3:00 under the hood: `api/captain.ts` + `verifyCaptainPlan`, Network
-  tab `api.meta.ai`, Vercel env (key name only), `npm test` 204 green.
+  tab `api.meta.ai`, Vercel env (key name only), `npm test` 212 green.
 
 ## X cut (15–25s, record in the same session, post before Nov 8 EOD)
 
@@ -159,8 +173,8 @@ submission page.
 
 - [ ] Vercel: deploy the proxy (`vercel --prod` in this repo, or connect git)
   and set the server secret `MUSE_API_KEY` in the Vercel dashboard. Routes:
-  `/api/interpret`, `/api/tag-photo`, `/api/captain`, `/api/transcribe`,
-  `/api/dream`, `/api/propose`. Key name only in screenshots — never the value.
+  `/api/interpret`, `/api/tag-photo`, `/api/captain`, `/api/wonder-captain`,
+  `/api/sam-segment`, `/api/transcribe`, `/api/dream`, `/api/propose`. Key name only in screenshots — never the value.
 - [ ] GitHub: set repo secret `VITE_MUSE_PROXY_URL` to
   `https://<your-vercel-app>.vercel.app/api/interpret` (sibling routes derive
   automatically), push to `main`, confirm the Pages build is green.

@@ -8,7 +8,8 @@ import { stripTrailingStopPhrase } from '../voice.js';
 import { PHOTO_ITEM_CAP } from './wardrobeVision.js';
 import { getKey, hasKey } from './byok.js';
 import { getOpenKey, getProvider, hasOpenKey, OPEN_LABEL, OPEN_MODEL, OPEN_URL } from './openweights.js';
-import { CAPTAIN_PROMPT, INTERPRET_PROMPT, MUSE_MODEL, MUSE_URL, PROPOSE_PROMPT, TAG_PROMPT, TAG_USER_TEXT, extractJsonArray, extractJsonObject, postJson, replyText, toCaptainPlan, toIntent, toPieces, toProposal } from './muse.js';
+import { CAPTAIN_PROMPT, INTERPRET_PROMPT, MUSE_MODEL, MUSE_URL, PROPOSE_PROMPT, TAG_PROMPT, TAG_USER_TEXT, WONDER_MODEL, extractJsonArray, extractJsonObject, postJson, replyText, toCaptainPlan, toIntent, toPieces, toProposal } from './muse.js';
+import { toSamResult, type SamResult } from './sam.js';
 import { TRANSCRIBE_URL, transcribeRequestJson, transcribeText } from './transcribe.js';
 import { DREAM_MODEL, DREAM_STYLE, DREAM_URL, dreamImage } from './dream.js';
 import type { CaptainPlan } from './captain.js';
@@ -73,7 +74,8 @@ export function warmProxy(fetchFn?: typeof fetch): void {
     const fn = fetchFn ?? globalThis.fetch?.bind(globalThis);
     if (!fn) return;
     const urls = new Set([base,
-      proxySibling(base, 'captain'), proxySibling(base, 'propose'),
+      proxySibling(base, 'captain'), proxySibling(base, 'wonder-captain'),
+      proxySibling(base, 'propose'), proxySibling(base, 'sam-segment'),
       proxySibling(base, 'transcribe'), proxySibling(base, 'tag-photo'),
     ]);
     for (const url of urls) {
@@ -453,6 +455,58 @@ export async function captainOpen(context: string, key: string, opts: LiveOpts =
   return captainWith(OPEN_URL, OPEN_MODEL, context, key, `Open Captain • ${OPEN_MODEL} (Baseten)`, opts);
 }
 
+/** Wonder reasoning budget: agentic plans stream longer than Spark's 30s. */
+const DEFAULT_WONDER_TIMEOUT_MS = 65000;
+
+/** POST day context to the sibling wonder-captain route; null on failure. */
+export async function captainWonderViaMuse(context: string, opts: LiveOpts = {}): Promise<CaptainResult | null> {
+  const ctx = context.trim();
+  if (!ctx || ctx.length > MAX_CONTEXT_CHARS) return null;
+  const url = opts.proxyUrl !== undefined
+    ? opts.proxyUrl.trim()
+    : proxySibling(configuredProxyUrl(), 'wonder-captain');
+  if (!url) return null;
+  const fetchFn = opts.fetchFn ?? globalThis.fetch?.bind(globalThis);
+  if (!fetchFn) return null;
+  const t0 = Date.now();
+  try {
+    const draft = asCaptain(await postJson(url, { context: ctx }, {}, fetchFn, opts.timeoutMs ?? DEFAULT_WONDER_TIMEOUT_MS));
+    if (!draft) return null;
+    return { plan: { ...draft, trace: [`Live Captain via proxy • ${WONDER_MODEL}`] }, latencyMs: Date.now() - t0, model: WONDER_MODEL, direct: false };
+  } catch {
+    return null;
+  }
+}
+
+/** POST day context straight to Muse Wonder with the user's key. */
+export async function captainWonderDirect(context: string, key: string, opts: LiveOpts = {}): Promise<CaptainResult | null> {
+  return captainWith(MUSE_URL, WONDER_MODEL, context, key, `Direct Captain • ${WONDER_MODEL}`, opts);
+}
+
+const DEFAULT_SAM_TIMEOUT_MS = 65000;
+const MAX_SAM_CONCEPT = 40;
+
+/** POST a photo + concept to the sibling sam-segment route; masks or null.
+    Only ever called from an explicit Segment tap. Never throws. */
+export async function samSegmentViaMuse(imageDataUrl: string, concept: string, opts: LiveOpts = {}): Promise<SamResult | null> {
+  const img = imageDataUrl.trim();
+  const c = concept.trim();
+  if (!img.startsWith('data:image/') || img.length > MAX_IMAGE_CHARS) return null;
+  if (!c || c.length > MAX_SAM_CONCEPT) return null;
+  const url = opts.proxyUrl !== undefined
+    ? opts.proxyUrl.trim()
+    : proxySibling(configuredProxyUrl(), 'sam-segment');
+  if (!url) return null;
+  const fetchFn = opts.fetchFn ?? globalThis.fetch?.bind(globalThis);
+  if (!fetchFn) return null;
+  try {
+    const raw = await postJson(url, { image: img, concept: c }, {}, fetchFn, opts.timeoutMs ?? DEFAULT_SAM_TIMEOUT_MS);
+    return toSamResult(raw);
+  } catch {
+    return null;
+  }
+}
+
 /** Direct backends in provider order: selected first, other as fallback. */
 function directBackends(): Array<{ open: boolean; key: string | null }> {
   const metaKey = getKey();
@@ -462,8 +516,15 @@ function directBackends(): Array<{ open: boolean; key: string | null }> {
     : [{ open: false, key: metaKey }, { open: true, key: openKey }];
 }
 
-/** Captain resolver: direct (provider order) → proxy → null (heuristic). */
+/** Captain resolver: Wonder-direct → direct (provider order) → Wonder
+    proxy → Spark proxy → null (heuristic). Wonder reasons best, so it
+    goes first wherever a path exists. */
 export async function resolveCaptain(context: string, opts: LiveOpts = {}): Promise<CaptainResult | null> {
+  const key = getKey();
+  if (key) {
+    const wonder = await captainWonderDirect(context, key, opts);
+    if (wonder) return wonder;
+  }
   for (const b of directBackends()) {
     if (!b.key) continue;
     const direct = b.open
@@ -471,7 +532,11 @@ export async function resolveCaptain(context: string, opts: LiveOpts = {}): Prom
       : await captainDirect(context, b.key, opts);
     if (direct) return direct;
   }
-  if (liveModeEnabled()) return captainViaMuse(context, opts);
+  if (liveModeEnabled()) {
+    const wonder = await captainWonderViaMuse(context, opts);
+    if (wonder) return wonder;
+    return captainViaMuse(context, opts);
+  }
   return null;
 }
 

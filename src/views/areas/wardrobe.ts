@@ -5,7 +5,8 @@ import { store } from '../../store.js';
 import { createId, nowIso, todayKey } from '../../core/model.js';
 import { DEMO_LABEL, occasionFromEvent, suggestOutfits } from '../../core/inference.js';
 import { PHOTO_DIRECT_LABEL, PHOTO_ITEM_CAP, PHOTO_LABEL, PHOTO_LIVE_LABEL, draftsFromPieces, draftsToClothing, makeDraft, photoItemCount } from '../../core/wardrobeVision.js';
-import { liveModeActive, tagPhotoDirect, tagPhotoViaMuse } from '../../core/liveModel.js';
+import { liveModeActive, samSegmentViaMuse, tagPhotoDirect, tagPhotoViaMuse } from '../../core/liveModel.js';
+import { maskSvg, type SamMask } from '../../core/sam.js';
 import { getKey, hasKey } from '../../core/byok.js';
 import { readImageDataUrl, validateImageFile } from '../../image.js';
 import type { Clothing, ClothingState, DetectedClothing, Id } from '../../core/types.js';
@@ -19,6 +20,11 @@ let photoUrl: string | undefined;
 let photoDrafts: DetectedClothing[] = [];
 let photoVia: 'direct' | 'proxy' | null = null;
 let detecting = false;
+// SAM segmentation (Meta-only, proxy): masks for one concept phrase,
+// held across re-renders until the user drafts them or picks a photo.
+let segmentConcept = 'shirt';
+let segmentMasks: SamMask[] = [];
+let segmenting = false;
 
 export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: boolean }): void {
   const s = store.state;
@@ -63,7 +69,14 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
           <button class="btn soft small" id="wd-detect" ${detecting ? 'disabled' : ''}>${detecting ? 'Detecting…' : 'Detect pieces'}</button>
           <button class="btn soft small" id="wd-draft-add">+ Add a piece</button>
           <button class="btn plain small" id="wd-draft-save">Save confirmed pieces</button>
-        </div>` : '<p class="meta">Pick a photo of your wardrobe, then tag the pieces in it.</p>'}
+        </div>
+        <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">
+          <input type="text" id="wd-seg-concept" value="${esc(segmentConcept)}" placeholder="Segment: e.g. shirt" style="flex:1;min-width:120px" aria-label="Segment concept" />
+          <button class="btn soft small" id="wd-segment" ${segmenting ? 'disabled' : ''}>${segmenting ? 'Segmenting…' : 'Segment'}</button>
+        </div>
+        ${segmentMasks.length ? `<p class="meta">SAM 3.1 found ${segmentMasks.length} mask${segmentMasks.length === 1 ? '' : 's'} for “${esc(segmentConcept)}” — tap + to draft one.</p>
+        <div class="row" style="flex-wrap:wrap;gap:8px">${segmentMasks.map((m, i) =>
+          `<div style="width:72px"><img src="data:image/svg+xml,${encodeURIComponent(maskSvg(m))}" alt="Mask ${i + 1}" style="width:72px;height:72px;object-fit:contain;border-radius:8px;background:var(--sage-wash)" /><br/><button class="btn soft small" data-seg-add="${i}">+ Draft</button></div>`).join('')}</div>` : ''}` : '<p class="meta">Pick a photo of your wardrobe, then tag the pieces in it.</p>'}
       <p class="meta">${photoItemCount(s.clothing)}/${PHOTO_ITEM_CAP} photo-backed pieces. ${photoVia === 'direct' ? 'This photo was sent to the Muse API with your key when you tapped Detect — the downscaled copy is attached to each piece you save.' : photoVia ? 'This photo was sent to the proxy for detection when you tapped Detect — the downscaled copy is attached to each piece you save.' : 'The downscaled photo is attached to each piece you save and never leaves this device.'}</p>
     </div>
     <div class="card"><h3>Suggest for an occasion</h3>
@@ -143,6 +156,7 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
       photoUrl = await readImageDataUrl(file, { maxDim: 480, quality: 0.72 });
       photoDrafts = [makeDraft()];
       photoVia = null;
+      segmentMasks = [];
       renderWardrobe(body, ui, {});
     } catch { ui.toast('Could not read that photo.'); }
   });
@@ -171,6 +185,40 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
       if (body.isConnected) renderWardrobe(body, ui, {});
     }
   });
+  body.querySelector('#wd-segment')?.addEventListener('click', async () => {
+    if (!photoUrl || segmenting) return;
+    if (!liveModeActive()) {
+      ui.toast('Segment needs live mode on (proxy).');
+      return;
+    }
+    const concept = body.querySelector<HTMLInputElement>('#wd-seg-concept')!.value.trim() || 'shirt';
+    if (concept.length > 40) { ui.toast('Keep the concept under 40 characters.'); return; }
+    syncDraftsFromDom(body);
+    segmentConcept = concept;
+    segmenting = true;
+    renderWardrobe(body, ui, {});
+    try {
+      const out = await samSegmentViaMuse(photoUrl, concept);
+      if (!body.isConnected) return;
+      if (!out) { ui.toast('Segmentation unavailable — tag by hand.'); return; }
+      if (!out.masks.length) { ui.toast('No masks found — try another word.'); return; }
+      segmentMasks = out.masks;
+      ui.toast(`Segmented ${out.masks.length} mask${out.masks.length === 1 ? '' : 's'} — tap + to draft one.`);
+    } finally {
+      segmenting = false;
+      if (body.isConnected) renderWardrobe(body, ui, {});
+    }
+  });
+  body.querySelectorAll<HTMLButtonElement>('[data-seg-add]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const m = segmentMasks[Number(b.dataset.segAdd)];
+      if (!m) return;
+      syncDraftsFromDom(body);
+      photoDrafts.push(makeDraft({ name: `${segmentConcept} ${photoDrafts.length + 1}` }));
+      photoVia = photoVia ?? 'proxy';
+      ui.toast('Draft added from mask — name it and save.');
+      renderWardrobe(body, ui, {});
+    }));
   body.querySelector('#wd-setup')?.addEventListener('click', () => ui.setup());
   body.querySelector('#wd-draft-add')?.addEventListener('click', () => {
     syncDraftsFromDom(body);

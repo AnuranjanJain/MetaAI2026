@@ -9,6 +9,10 @@
     "preview": "vite preview",
     "test": "tsx --test tests/*.test.ts"
   },
+  "dependencies": {
+    "@meta-sam/parser": "latest",
+    "openai": "^4.0.0"
+  },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "tsx": "^4.19.0",

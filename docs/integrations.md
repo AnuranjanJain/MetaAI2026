@@ -85,6 +85,34 @@ Wired paths:
   move, no invented ids, no overlaps) runs client-side on every plan —
   live and fallback alike. Accept applies everything in one undoable
   `store.update` and bumps the Captain streak.
+- `POST {sibling}/api/wonder-captain` (`api/wonder-captain.ts`) receives
+  `{ context }` (same cap), calls `muse-wonder-1.0` on the same
+  chat-completions endpoint with the same prompt and plan shape
+  (55s upstream budget for agentic reasoning), and returns
+  `{ plan, model: 'muse-wonder-1.0' }`. Client: `captainWonderViaMuse` /
+  `captainWonderDirect` in `src/core/liveModel.ts` (65s client timeout);
+  `resolveCaptain` tries Wonder-direct → direct (provider order) → Wonder
+  proxy → Spark proxy → local heuristic.
+- `POST {sibling}/api/sam-segment` (`api/sam-segment.ts`) receives
+  `{ image, concept }` (JPEG/PNG/WebP data URL ≤2M chars, one noun phrase
+  ≤40 chars), streams `sam-3.1` through the Responses API with the OpenAI
+  SDK, normalizes the stream (synthesized `response.output_text.done`, per
+  the official cookbook fix), parses it with the official `@meta-sam`
+  parser, rejects on parser diagnostics, and returns
+  `{ masks: [{ objectId, svg, width, height, box? }], outcome, model }`
+  (≤12 masks). Client: `samSegmentViaMuse` in `src/core/liveModel.ts`
+  (65s timeout) allowlisted by `toSamResult` in `src/core/sam.ts`
+  (exact-shape records, SVG path allowlist, 4000px cap, fail-closed
+  batches); `maskSvg` renders thumbnails. Wardrobe Segment row calls it
+  from an explicit tap only — masks become drafts through the existing
+  confirm-gated save. Proxy-only (SAM has no chat-completions path).
+
+## Meta-only scope (2026-11-02)
+
+Submission path uses Meta APIs only — no Fireworks, no Modal. The Baseten
+open-weights path (`src/core/openweights.ts`, `interpretOpen`/`captainOpen`)
+is parked: code and tests stay, but the default provider never touches it
+unless the user explicitly switches, and judge-path docs ignore it.
 
 ## Live-mode shape (Muse speech understanding via Vercel proxy)
 
