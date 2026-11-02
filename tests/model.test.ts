@@ -4,7 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  applyProposal, buildChecklistForEvent, moveBelonging, seedState, summarizeChecklist,
+  applyProposal, buildChecklistForEvent, bumpStreak, demoDayState, moveBelonging, seedState, summarizeChecklist,
 } from '../src/core/model.js';
 import type { Capture } from '../src/core/types.js';
 
@@ -75,6 +75,34 @@ describe('buildChecklistForEvent', () => {
     s.routines.push({ id: 'r', name: 'X', belongingIds: ['missing'], tasks: [] });
     const items = buildChecklistForEvent(s, 'evt_new', 'r');
     assert.equal(items[0].state, 'unresolved');
+  });
+});
+
+describe('demoDayState', () => {
+  it('loads 3 events, 5 open tasks, and inbox samples', () => {
+    const s = demoDayState();
+    assert.equal(s.events.length, 3);
+    assert.equal(s.tasks.filter((t) => !t.done).length, 5);
+    assert.ok(s.captures.filter((c) => c.status === 'inbox').length >= 2);
+    assert.ok(s.events.every((e) => e.fixed));
+  });
+});
+
+describe('bumpStreak', () => {
+  it('starts, holds same-day, increments consecutive, restarts gaps', () => {
+    assert.deepEqual(bumpStreak(undefined, '2026-11-03'), { count: 1, lastDay: '2026-11-03' });
+    assert.deepEqual(
+      bumpStreak({ count: 2, lastDay: '2026-11-03' }, '2026-11-03'),
+      { count: 2, lastDay: '2026-11-03' },
+    );
+    assert.deepEqual(
+      bumpStreak({ count: 2, lastDay: '2026-11-02' }, '2026-11-03'),
+      { count: 3, lastDay: '2026-11-03' },
+    );
+    assert.deepEqual(
+      bumpStreak({ count: 5, lastDay: '2026-10-30' }, '2026-11-03'),
+      { count: 1, lastDay: '2026-11-03' },
+    );
   });
 });
 

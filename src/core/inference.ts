@@ -13,7 +13,7 @@ const EVENT_WORDS = [
   'meeting', 'appointment', 'class', 'lecture', 'seminar', 'dentist', 'doctor',
   'interview', 'dinner', 'lunch', 'flight', 'exam', 'deadline', 'party', 'call',
 ];
-const TASK_WORDS = ['buy', 'do', 'finish', 'submit', 'call', 'email', 'send', 'homework', 'read', 'write', 'clean'];
+const TASK_WORDS = ['buy', 'do', 'finish', 'submit', 'call', 'email', 'send', 'homework', 'read', 'write', 'clean', 'water', 'gym', 'walk', 'cook', 'study'];
 const ITEM_WORDS = ['bring', 'pack', 'remember', 'forget', 'need', 'item', 'called', 'named', 'charger', 'adapter', 'keys', 'passport', 'umbrella', 'laptop'];
 
 const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i;
@@ -179,6 +179,9 @@ export function propose(text: string, hasImage: boolean): Proposal {
   else if (eventHits >= 1 || (time && taskScore === 0 && itemScore === 0)) type = 'event';
   else if (named.name || (itemScore > taskScore && itemScore > 0)) type = 'item';
   else if (taskScore > 0) type = 'task';
+  // A routine with an action but no concrete slot is a repeating task,
+  // not an appointment: "call mom once a week" renews; it isn't Thursday.
+  if (type === 'event' && !date && !time && taskScore > 0 && detectRepeat(clean)) type = 'task';
 
   const missing: string[] = [];
   if (type === 'event') {
@@ -207,8 +210,17 @@ export function propose(text: string, hasImage: boolean): Proposal {
     itemName,
     // A heard place doubles as the spot hint so Confirm can place it at once.
     locationHint: type === 'item' ? place : undefined,
+    // Routine words make it repeat; tasks only, never events or items.
+    repeat: type === 'task' ? detectRepeat(clean) : undefined,
     confidence, missing, rationale,
   };
+}
+
+function detectRepeat(text: string): 'daily' | 'weekly' | undefined {
+  const lower = text.toLowerCase();
+  if (/\b(every\s+day|daily|every\s+morning|every\s+evening|every\s+night)\b/.test(lower)) return 'daily';
+  if (/\b(weekly|every\s+week|once\s+a\s+week)\b/.test(lower)) return 'weekly';
+  return undefined;
 }
 
 function guessItemName(text: string): string {

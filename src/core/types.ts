@@ -20,6 +20,8 @@ export interface Proposal {
   durationMin?: number;
   itemName?: string;
   locationHint?: string;
+  /** Task only: renew after completion on a daily/weekly rhythm. */
+  repeat?: 'daily' | 'weekly';
   confidence: 'high' | 'medium' | 'low';
   /** Human-readable gaps, e.g. "no date found in source". Never invented. */
   missing: string[];
@@ -50,6 +52,10 @@ export interface Task {
   /** ISO datetime when scheduled, local time. */
   start?: string;
   done: boolean;
+  /** Daily routine: renewed by the morning rollover after completion. */
+  repeat?: 'daily' | 'weekly';
+  /** YYYY-MM-DD the last renewal spawned for (rollover guard). */
+  spawnedFor?: string;
   sourceCaptureId?: Id;
   createdAt: string;
   updatedAt: string;
@@ -158,6 +164,12 @@ export interface DecorPrefs {
   customPoster?: string;
 }
 
+export interface CaptainStreak {
+  count: number;
+  /** YYYY-MM-DD of the last Captain accept. */
+  lastDay: string;
+}
+
 export interface AppState {
   version: 1;
   captures: Capture[];
@@ -172,5 +184,7 @@ export interface AppState {
   sound: SoundPrefs;
   /** Optional so saves from before wall decor still load cleanly. */
   decor?: DecorPrefs;
+  /** Optional so old saves keep loading; Captain accepts bump it. */
+  streak?: CaptainStreak;
   updatedAt: string;
 }

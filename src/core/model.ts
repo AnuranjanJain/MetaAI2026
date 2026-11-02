@@ -6,6 +6,7 @@ import type {
   Belonging,
   CalEvent,
   Capture,
+  CaptainStreak,
   CheckItem,
   Clothing,
   Id,
@@ -125,6 +126,89 @@ export function seedState(): AppState {
   };
 }
 
+/** Judge-ready demo day: 3 fixed events, 5 open tasks, desk inbox,
+    wardrobe samples (from seed), and packing lists. Explicit tap only —
+    never auto-applied. Pure. */
+export function demoDayState(): AppState {
+  const base = seedState();
+  const now = nowIso();
+  const today = todayKey();
+  const gym: CalEvent = {
+    id: 'evt_gym', title: 'Gym session', date: today,
+    start: '17:30', end: '18:30', place: 'Campus gym', fixed: true, createdAt: now,
+  };
+  const dinner: CalEvent = {
+    id: 'evt_dinner', title: 'Dinner with Sam', date: today,
+    start: '20:00', place: 'Maple St', fixed: true, createdAt: now,
+  };
+  const tasks: Task[] = [
+    { id: 'task_read', title: 'Read chapter 4', durationMin: 45, flexible: true, done: false, createdAt: now, updatedAt: now },
+    { id: 'task_lab', title: 'Finish lab report', durationMin: 60, flexible: true, done: false, createdAt: now, updatedAt: now },
+    { id: 'task_call', title: 'Call mom', durationMin: 20, flexible: true, done: false, createdAt: now, updatedAt: now },
+    { id: 'task_groceries', title: 'Buy groceries', durationMin: 30, flexible: true, done: false, createdAt: now, updatedAt: now },
+    { id: 'task_water', title: 'Water the plants', durationMin: 10, flexible: true, done: false, createdAt: now, updatedAt: now },
+  ];
+  return {
+    ...base,
+    events: [...base.events, gym, dinner],
+    tasks,
+    captures: [
+      { id: 'cap_demo1', kind: 'note', text: 'Dentist tomorrow at 2:30pm, Main St clinic', name: 'Dentist note (sample)', status: 'inbox', createdAt: now },
+      { id: 'cap_demo2', kind: 'note', text: 'Pack gym shoes and water bottle', name: 'Gym reminder (sample)', status: 'inbox', createdAt: now },
+    ],
+    updatedAt: now,
+  };
+}
+
+/** Morning rollover: renew completed repeating tasks for `today`.
+    Only the latest done copy per title spawns, at most once per day
+    (`spawnedFor` guard), so history stays true and dupes can't pile up.
+    Mutates the draft; returns the number renewed. */
+export function rolloverRepeats(draft: AppState, today: string): number {
+  const now = nowIso();
+  const latest = new Map<string, Task>();
+  for (const t of draft.tasks) {
+    if (!t.done || !t.repeat) continue;
+    const k = `${t.repeat}::${t.title.trim().toLowerCase()}`;
+    const prev = latest.get(k);
+    if (!prev || t.updatedAt > prev.updatedAt) latest.set(k, t);
+  }
+  const open = new Set<string>();
+  for (const t of draft.tasks) {
+    if (!t.done && t.repeat) open.add(`${t.repeat}::${t.title.trim().toLowerCase()}`);
+  }
+  let n = 0;
+  for (const [k, done] of latest) {
+    if (done.spawnedFor === today) continue;
+    if (open.has(k)) continue;
+    const doneDay = done.updatedAt.slice(0, 10);
+    if (doneDay >= today) continue;
+    if (done.repeat === 'weekly') {
+      const days = (Date.parse(today) - Date.parse(doneDay)) / 86400000;
+      if (!Number.isFinite(days) || days < 7) continue;
+    }
+    draft.tasks.push({
+      id: createId('task'), title: done.title, notes: done.notes,
+      durationMin: done.durationMin, flexible: true, done: false,
+      repeat: done.repeat, sourceCaptureId: done.sourceCaptureId,
+      createdAt: now, updatedAt: now,
+    });
+    done.spawnedFor = today;
+    open.add(k);
+    n++;
+  }
+  return n;
+}
+
+/** Next streak after a Captain accept on `day`. Same-day accepts keep the
+    count; consecutive days increment; gaps restart at 1. Pure. */
+export function bumpStreak(prev: CaptainStreak | undefined, day: string): CaptainStreak {
+  if (!prev || !prev.lastDay) return { count: 1, lastDay: day };
+  if (prev.lastDay === day) return prev;
+  if (addDaysKey(prev.lastDay, 1) === day) return { count: prev.count + 1, lastDay: day };
+  return { count: 1, lastDay: day };
+}
+
 /** Build a checklist for an event from a routine, skipping duplicates. */
 export function buildChecklistForEvent(
   state: AppState, eventId: Id, routineId: Id,
@@ -168,6 +252,7 @@ export function applyProposal(
       flexible: true, done: false, sourceCaptureId: capture.id,
       createdAt: now, updatedAt: now,
     };
+    if (proposal.repeat) task.repeat = proposal.repeat;
     return { task, capture: { ...confirmed, resultId: task.id } };
   }
   if (proposal.type === 'event') {

@@ -3,7 +3,7 @@
 // records stay consistent.
 
 import type { AppState } from './core/types.js';
-import { emptyState, nowIso, seedState } from './core/model.js';
+import { emptyState, nowIso, rolloverRepeats, seedState, todayKey } from './core/model.js';
 
 const KEY = 'pocketroom.v1';
 const UNDO_LIMIT = 30;
@@ -86,6 +86,17 @@ class Store {
       // Quota or privacy mode: keep working in memory, say so honestly.
       this.setSave('error');
     }
+  }
+
+  /** Morning rollover: renew completed repeating tasks once per day.
+      Dry-runs first so quiet days leave no undo entry. Returns renewals. */
+  rollover(): number {
+    const probe = structuredClone(this.state);
+    const today = todayKey();
+    if (rolloverRepeats(probe, today) === 0) return 0;
+    let n = 0;
+    this.update((d) => { n = rolloverRepeats(d, today); });
+    return n;
   }
 
   /** Destructive reset back to labeled samples. Used only from explicit UI. */

@@ -7,7 +7,6 @@ import { DEMO_LABEL, occasionFromEvent, suggestOutfits } from '../../core/infere
 import { PHOTO_DIRECT_LABEL, PHOTO_ITEM_CAP, PHOTO_LABEL, PHOTO_LIVE_LABEL, draftsFromPieces, draftsToClothing, makeDraft, photoItemCount } from '../../core/wardrobeVision.js';
 import { liveModeActive, tagPhotoDirect, tagPhotoViaMuse } from '../../core/liveModel.js';
 import { getKey, hasKey } from '../../core/byok.js';
-import { keyFieldHtml, wireKeyField } from '../key.js';
 import { readImageDataUrl, validateImageFile } from '../../image.js';
 import type { Clothing, ClothingState, DetectedClothing, Id } from '../../core/types.js';
 import { esc, type Ui } from '../../shell.js';
@@ -56,7 +55,7 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
         <button class="btn soft small" id="wd-add">Add</button></div></div>
     <div class="card"><h3>Add from photo</h3>
       <div class="demo-note">${esc(photoVia === 'direct' ? PHOTO_DIRECT_LABEL : photoVia ? PHOTO_LIVE_LABEL : PHOTO_LABEL)}</div>
-      ${keyFieldHtml('wd')}
+      ${photoVia ? '' : '<p><button class="btn soft small" id="wd-setup">AI setup — add a key for live detection</button></p>'}
       <p><label class="field">Wardrobe photo<input type="file" id="wd-photo" accept="image/*" /></label></p>
       ${photoUrl ? `<img src="${photoUrl}" alt="Your wardrobe photo" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px" />
         ${photoDrafts.map((d, i) => draftRow(d, i)).join('')}
@@ -172,7 +171,7 @@ export function renderWardrobe(body: HTMLElement, ui: Ui, _opts: { focusAdd?: bo
       if (body.isConnected) renderWardrobe(body, ui, {});
     }
   });
-  wireKeyField(body, ui, 'wd', () => renderWardrobe(body, ui, {}));
+  body.querySelector('#wd-setup')?.addEventListener('click', () => ui.setup());
   body.querySelector('#wd-draft-add')?.addEventListener('click', () => {
     syncDraftsFromDom(body);
     photoDrafts.push(makeDraft());

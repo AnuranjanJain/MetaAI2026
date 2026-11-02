@@ -23,17 +23,26 @@ More screenshots (planner, wardrobe photo) coming soon.
   window + door, plant, stereo speakers, posters including your own uploaded poster)
   that reflects your actual day. Full-height frame, no page scroll.
 - **Voice assistant** 🎙️ — say it, confirm it. *"Dentist tomorrow at 2:30 pm"*,
-  *"remind me to buy milk"*, *"where is my adapter?"*, *"what's next?"* — intents are
-  classified on-device, missing details are asked by voice, and **nothing is ever
+  *"remind me to buy milk"*, *"where is my adapter?"*, *"what's next?"* — Live Muse
+  intents by default (browser or Muse Voice Transcribe input, per-result model
+  badge + latency), missing details asked by voice, and **nothing is ever
   saved or completed without your tap**. Spoken read-back on confirm.
+- **Morning Captain** 🧭 — dump the day in one textarea; Muse proposes slots,
+  prep, leave-by, outfit, and pack list; code verifies (fixed events never
+  move, no invented ids); one-tap Accept applies everything undoably and bumps
+  your streak. Demo-day seed included for judges.
+- **Dream poster + share** — on-device SVG day poster, optional Muse Image
+  dream upgrade, canvas PNG share card, Post-to-X intent, and copyable share
+  text with real counts.
 - **Action planner** — "Plan my day" turns fixed events + flexible tasks into a
   reviewable step list: fixed plans stay fixed, tasks slot into free windows, a prep
   step per event (unpacked checklist items), an honest leave-by buffer
   (*"not a travel time"*), and an *"I'm late — replan from now"* mode that defers
   what no longer fits instead of silently dropping it. Accept applies everything in
   one undoable update.
-- **Desk captures** — drop a note or screenshot; an on-device interpretation proposes
-  a task/event/item, you edit and confirm. Every proposal path shows its honesty label.
+- **Desk captures** — drop a note or screenshot; instant on-device reading plus an
+  "Interpret with Muse" tap for model extraction, you edit and confirm.
+  Every proposal path shows its honesty label.
 - **Wardrobe + photos** — catalog your clothes, then "Add from photo": upload a
   wardrobe picture, tap Detect for live Muse drafts (live mode only, explicit
   tap) or hand-tag the pieces yourself, confirm only what you want.
@@ -55,11 +64,11 @@ More screenshots (planner, wardrobe photo) coming soon.
 | Build | Vite 6 + TypeScript (strict, `tsc --noEmit`) |
 | UI | No framework — DOM via template strings + event wiring, SVG room scene |
 | State | Single `AppState` store, `localStorage` key `pocketroom.v1`, undo stack (30) |
-| Voice in/out | Browser Web Speech API (`SpeechRecognition` + `speechSynthesis`), feature-detected |
+| Voice in/out | Browser Web Speech API or Muse Voice Transcribe (`muse-voice-transcribe-1.0`) + `speechSynthesis`, feature-detected |
 | Music/SFX | WebAudio — synthesized loops + UI motifs, zero audio files |
-| Images | Canvas-downscaled JPEG data URLs (quota-safe local persistence) |
-| Tests | `node:test` + `tsx` — 152 tests, pure logic in `src/core/` |
-| Backend (optional) | Vercel serverless proxy (`api/interpret.ts`) → Muse API (`muse-spark-1.3`), key in Vercel server secret only |
+| Images | Canvas-downscaled JPEG data URLs (quota-safe local persistence); Muse Image (`muse-image-1.0`) dream poster |
+| Tests | `node:test` + `tsx` — 204 tests, pure logic in `src/core/` |
+| Backend | Vercel serverless proxy (`api/*.ts`) → Meta Model API (`muse-spark-1.3-contributor`), key in Vercel server secret only |
 
 ## Usage
 
@@ -68,7 +77,7 @@ Prereqs: Node 18+.
 ```bash
 npm install
 npm run dev      # http://127.0.0.1:5173 — localhost is a secure context, so the mic works here
-npm test         # 152 tests across assistant / planner / wardrobe / scheduling / live adapter
+npm test         # 204 tests across routine / reminders / assistant / planner / captain / propose / transcribe / dream / share / openweights / wardrobe / scheduling / live adapter
 npm run build    # tsc --noEmit && vite build → dist/
 npm run preview  # serve the production build locally
 ```
@@ -77,29 +86,36 @@ Notes:
 
 - Voice features need Chrome/Edge (Firefox has no speech recognition — the mic button
   hides itself and typing always works). Mic permission denied → graceful toast.
-- Your data never leaves the device. No accounts, no tracking, no network calls
-  in the local build. Clearing site data wipes the room.
-- Cloud AI stays fully optional: use your own Muse key in-app (BYOK, stored
-  only in your browser), or the hosted proxy via a `localStorage` opt-in
-  (`pocketroom.liveMuse`) plus a `VITE_MUSE_PROXY_URL` build secret. If no
-  key path works, the app silently uses the complete local product. The
-  shared Muse key lives only in the Vercel dashboard — never the repo or
-  bundle (see `docs/integrations.md`).
+  Muse Transcribe input needs a mic + Live path (proxy or your own key).
+- Your data stays on-device except transcripts/audio/day-words you explicitly
+  send to Muse when Live is on. No accounts, no tracking. Clearing site data
+  wipes the room.
+- Live Muse is ON by default when the build carries `VITE_MUSE_PROXY_URL`;
+  turn it off any time (assistant Live toggle sets `pocketroom.liveMuse`).
+  Or bring your own Muse key in-app (BYOK, stored only in your browser).
+  If no key path works, the app uses the complete local product with a
+  visible fallback label — never silent. The shared Muse key lives only in
+  the Vercel dashboard — never the repo or bundle (see `docs/integrations.md`).
 
 ## Project structure
 
 ```
 src/
-  core/        # pure, node-testable logic: assistant, planner, inference,
-               # schedule, wardrobeVision, model, types
-  views/       # room scene, desk, timeline, wardrobe, storage, assistant sheet
+  core/        # pure, node-testable logic: assistant, planner, captain,
+               # inference, schedule, wardrobeVision, transcribe, dream,
+               # share, model, types
+  views/       # room scene, desk, timeline, wardrobe, storage, assistant,
+               # share, key sheets
   shell.ts     # frame: rails, docks, sheets, toasts (keep under ~500 lines)
   voice.ts     # speech in/out wrappers      image.ts      # upload validation + downscale
+  audioRecord.ts # mic clip → WAV for Muse Transcribe
   music.ts     # synth player                audio.ts      # UI sound motifs
   store.ts     # single store + undo         styles.css    # full-height frame + rails
-tests/         # assistant, planner, wardrobe, scheduling suites
+tests/         # assistant, planner, captain, transcribe, dream, share,
+               # wardrobe, scheduling suites
 docs/          # integrations.md (honesty contract), screenshots/
-api/           # Vercel proxy: transcript → Muse intent (key in Vercel secret only)
+api/           # Vercel proxy: interpret / tag-photo / captain / transcribe /
+               # dream → Meta Model API (key in Vercel secret only)
 ```
 
 Conventions: pure logic lives in `src/core/`; views never mutate the store except

@@ -244,6 +244,13 @@ ul.clean li:first-child { border-top: 0; }
 @media (min-width: 900px) {
   .sheet { left: auto; top: 0; bottom: 0; width: min(480px, 42vw); border-radius: 0; max-height: none; }
 }
+/* Touch phones: no iOS focus zoom, thumb-sized toast actions, smooth sheets. */
+@media (pointer: coarse) {
+  .check select { font-size: 16px; padding: 8px 10px; }
+  .toast button { padding: 8px 14px; min-height: 40px; }
+  .sheet-body { -webkit-overflow-scrolling: touch; }
+  .btn.small { min-height: 40px; }
+}
 
 /* ---------- Toasts ---------- */
 #toast-root {
@@ -392,7 +399,15 @@ body.late #stage { max-width: 640px; }
   .toast { animation: rise 0.18s ease-out; }
   .room-hotspot { transition: transform 0.15s ease; }
   @keyframes rise { from { transform: translateY(10px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+  #as-status.thinking::after { content: ''; animation: think-dots 1.2s steps(1) infinite; }
+  @keyframes think-dots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+  }
 }
+#as-status.thinking { font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

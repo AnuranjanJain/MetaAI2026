@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DIRECT_LABEL, LIVE_INTRO, LIVE_LABEL, interpretDirect, interpretViaMuse, liveModeActive, liveModeEnabled, proxyConfigured, proxySibling, resolveIntent, tagPhotoDirect, tagPhotoViaMuse,
+  DIRECT_LABEL, LIVE_INTRO, LIVE_LABEL, interpretDirect, interpretViaMuse, liveModeActive, liveModeEnabled, proxyConfigured, proxySibling, resolveIntent, tagPhotoDirect, tagPhotoViaMuse, warmProxy,
 } from '../src/core/liveModel.js';
 import { emptyState } from '../src/core/model.js';
 
@@ -58,8 +58,8 @@ describe('live adapter basics', () => {
     assert.doesNotMatch(LIVE_LABEL, /demo/i);
   });
 
-  it('is off by default where no opt-in exists', () => {
-    assert.equal(liveModeEnabled(), false);
+  it('is on by default unless explicitly opted out', () => {
+    assert.equal(liveModeEnabled(), true);
   });
 
   it('names live mode in the intro without demo copy', () => {
@@ -67,10 +67,14 @@ describe('live adapter basics', () => {
     assert.doesNotMatch(LIVE_INTRO, /demo/i);
   });
 
-  it('needs both opt-in and a configured proxy to show live', async () => {
+  it('needs both enabled and a configured proxy to show live', async () => {
     assert.equal(proxyConfigured(), false);
     assert.equal(liveModeActive(), false);
     await withLiveMode(true, async () => {
+      assert.equal(liveModeActive(), false);
+    });
+    await withLiveMode(false, async () => {
+      assert.equal(liveModeEnabled(), false);
       assert.equal(liveModeActive(), false);
     });
   });
@@ -140,6 +144,36 @@ describe('untrusted proxy responses', () => {
     });
     assert.equal(intent, null);
     assert.ok(Date.now() - t0 < 5000, 'timed out promptly');
+  });
+
+  it('falls back to local fast when live hangs past budget', async () => {
+    await withLiveMode(true, async () => {
+      const t0 = Date.now();
+      const out = await resolveIntent('where is my adapter', emptyState(), {
+        proxyUrl: PROXY, fetchFn: stubFetch({ hang: true }), timeoutMs: 20,
+      });
+      assert.ok(Date.now() - t0 < 5000, 'fell back promptly');
+      assert.notEqual(out, 'empty');
+      if (out === 'empty') throw new Error('expected local fallback');
+      assert.equal(out.live, false);
+      assert.equal(out.offline, true);
+      assert.equal(out.intent.kind, 'where');
+    });
+  });
+
+  it('warms routes without user data and never throws', async () => {
+    await withLiveMode(true, async () => {
+      const calls: Array<{ url: unknown; init: unknown }> = [];
+      const fetchFn = (async (url: unknown, init: unknown) => {
+        calls.push({ url, init });
+        return { ok: true, status: 204, json: async () => ({}) };
+      }) as unknown as typeof fetch;
+      assert.doesNotThrow(() => warmProxy(fetchFn));
+      await new Promise((r) => setTimeout(r, 10));
+      // No proxy URL in this build → no calls, no throw.
+      assert.equal(calls.length, 0);
+      assert.doesNotThrow(() => warmProxy());
+    });
   });
 });
 

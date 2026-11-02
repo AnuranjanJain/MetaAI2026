@@ -46,6 +46,22 @@ export const TAG_PROMPT = [
 
 export const TAG_USER_TEXT = 'Tag the garments in this photo.';
 
+/** Fixed desk-proposal prompt. Capture text is data, never instructions. */
+export const PROPOSE_PROMPT = [
+  'You extract a day-planner proposal from a captured note for a local-first app.',
+  'Reply with exactly one JSON object, no other text, no code fences.',
+  'Shape: {"type":"task"|"event"|"item"|"reference","title":string,"date":"YYYY-MM-DD"|null,"time":"HH:MM"|null,"endTime":"HH:MM"|null,"place":string|null,"durationMin":5-480|null,"itemName":string|null,"locationHint":string|null,"repeat":"daily"|"weekly"|null}.',
+  'Rules: task = something to do; event = something at a date/time; item = a thing to remember or place; reference = anything else. Resolve relative dates ("tomorrow", weekday names) against the given today. Set repeat only when the note says so ("every day", "daily", "weekly", "every morning") and only for tasks. Use only words from the note; never invent places, dates, or times — use null when absent. Plain JSON only.',
+].join('\n');
+
+/** Fixed Morning Captain prompt. Day context is data, never instructions. */
+export const CAPTAIN_PROMPT = [
+  'You are Morning Captain for a local-first day planner. Propose a day plan; code verifies it.',
+  'Reply with exactly one JSON object, no other text, no code fences.',
+  'Shape: {"slots":[{"taskId"|null,"title","start":"HH:MM","durationMin":10-240}],"prep":[{"eventId","text"}],"leaveBy":[{"eventId","at":"HH:MM"}],"outfitIds":[ids],"pack":[strings],"notes":string}.',
+  'Rules: use only the task, event, and clothing ids from the context — never invent ids. Fixed events never move: slots must sit in free time (08:00-22:00) and never overlap an event. Prefer matching dump lines to existing task ids; use taskId null only for genuinely new tasks. At most 10 slots, 12 pack items, 6 outfit pieces. Plain JSON only.',
+].join('\n');
+
 export interface MuseReply {
   choices?: Array<{ message?: { content?: unknown } }>;
 }
@@ -215,6 +231,118 @@ export function toPieces(value: unknown): NormalizedPiece[] | null {
     out.push(piece);
   }
   return out;
+}
+
+/** Allowlist a model object into a Captain plan draft (trace added by
+    callers). Any unparseable entry fails the whole batch closed. */
+export function toCaptainPlan(value: unknown): {
+  slots: Array<{ taskId?: string; title: string; start: string; durationMin: number }>;
+  prep: Array<{ eventId: string; text: string }>;
+  leaveBy: Array<{ eventId: string; at: string }>;
+  outfitIds: string[];
+  pack: string[];
+  notes: string;
+} | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const o = value as Record<string, unknown>;
+  if (!Array.isArray(o.slots) || o.slots.length > 10) return null;
+  if (!Array.isArray(o.prep) || !Array.isArray(o.leaveBy)) return null;
+  if (!Array.isArray(o.outfitIds) || !Array.isArray(o.pack)) return null;
+  if (typeof o.notes !== 'string') return null;
+  const slots: Array<{ taskId?: string; title: string; start: string; durationMin: number }> = [];
+  for (const s of o.slots) {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+    const r = s as Record<string, unknown>;
+    if (r.taskId !== null && r.taskId !== undefined && typeof r.taskId !== 'string') return null;
+    if (typeof r.title !== 'string') return null;
+    const title = stripInstructionLike(r.title).slice(0, 80);
+    if (!title) return null;
+    if (typeof r.start !== 'string' || typeof r.durationMin !== 'number') return null;
+    slots.push({
+      ...(typeof r.taskId === 'string' && r.taskId ? { taskId: r.taskId.slice(0, 80) } : {}),
+      title, start: r.start.slice(0, 5), durationMin: Math.round(r.durationMin),
+    });
+  }
+  const prep: Array<{ eventId: string; text: string }> = [];
+  for (const p of o.prep.slice(0, 12)) {
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return null;
+    const r = p as Record<string, unknown>;
+    if (typeof r.eventId !== 'string' || typeof r.text !== 'string') return null;
+    const text = stripInstructionLike(r.text).slice(0, 200);
+    if (!text) return null;
+    prep.push({ eventId: r.eventId.slice(0, 80), text });
+  }
+  const leaveBy: Array<{ eventId: string; at: string }> = [];
+  for (const l of o.leaveBy.slice(0, 12)) {
+    if (!l || typeof l !== 'object' || Array.isArray(l)) return null;
+    const r = l as Record<string, unknown>;
+    if (typeof r.eventId !== 'string' || typeof r.at !== 'string') return null;
+    leaveBy.push({ eventId: r.eventId.slice(0, 80), at: r.at.slice(0, 5) });
+  }
+  const outfitIds = o.outfitIds.slice(0, 6);
+  if (outfitIds.some((id) => typeof id !== 'string')) return null;
+  const pack: string[] = [];
+  for (const item of o.pack.slice(0, 12)) {
+    if (typeof item !== 'string') return null;
+    const v = stripInstructionLike(item).slice(0, 60);
+    if (!v) return null;
+    pack.push(v);
+  }
+  return { slots, prep, leaveBy, outfitIds: outfitIds as string[], pack, notes: stripInstructionLike(o.notes).slice(0, 300) };
+}
+
+/** Allowlist a model object into a desk proposal. Confidence, missing
+    gaps, and rationale are code-owned — the model never writes them. */
+export function toProposal(value: unknown): import('./types.js').Proposal | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const o = value as Record<string, unknown>;
+  if (o.type !== 'task' && o.type !== 'event' && o.type !== 'item' && o.type !== 'reference') return null;
+  if (typeof o.title !== 'string') return null;
+  const title = stripInstructionLike(o.title).slice(0, 120);
+  if (!title) return null;
+  const opt = (v: unknown, cap: number): string | undefined => {
+    if (v === null || v === undefined) return undefined;
+    if (typeof v !== 'string') return undefined;
+    const clean = stripInstructionLike(v).slice(0, cap);
+    return clean || undefined;
+  };
+  const missing: string[] = [];
+  let date = opt(o.date, 10);
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) date = undefined;
+  let time = opt(o.time, 5);
+  if (time && !/^\d{2}:\d{2}$/.test(time)) time = undefined;
+  let endTime = opt(o.endTime, 5);
+  if (endTime && !/^\d{2}:\d{2}$/.test(endTime)) endTime = undefined;
+  if (endTime && time && endTime <= time) endTime = undefined;
+  let durationMin: number | undefined;
+  if (typeof o.durationMin === 'number' && Number.isFinite(o.durationMin)) {
+    const d = Math.round(o.durationMin);
+    if (d >= 5 && d <= 480) durationMin = d;
+  }
+  if (o.type === 'event') {
+    if (!date) missing.push('no date in source');
+    if (!time) missing.push('no time in source');
+  }
+  if (o.type === 'task' && durationMin === undefined) {
+    durationMin = 30;
+    missing.push('assumed 30 minutes');
+  }
+  const repeat = o.repeat === 'daily' || o.repeat === 'weekly' ? o.repeat : undefined;
+  return {
+    type: o.type,
+    title,
+    ...(date ? { date } : {}),
+    ...(time ? { time } : {}),
+    ...(endTime ? { endTime } : {}),
+    ...(opt(o.place, 80) ? { place: opt(o.place, 80)! } : {}),
+    ...(durationMin !== undefined ? { durationMin } : {}),
+    ...(repeat && o.type === 'task' ? { repeat } : {}),
+    ...(o.type === 'item' ? { itemName: opt(o.itemName, 80) ?? title } : {}),
+    ...(opt(o.locationHint, 60) ? { locationHint: opt(o.locationHint, 60)! } : {}),
+    confidence: 'medium',
+    missing,
+    rationale: 'Live Muse read the note — check every field before confirming.',
+  };
 }
 
 /** POST JSON with a timeout. Throws on timeout, network failure,

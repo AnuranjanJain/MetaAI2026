@@ -6,10 +6,12 @@ import { store } from '../store.js';
 import { buildChecklistForEvent, createId, nowIso, todayKey } from '../core/model.js';
 import { applySlotAnswer, missingSlots, propose, searchBelongings, DEMO_LABEL, type ProposalSlot } from '../core/inference.js';
 import { deskSummary, findRenamable, haveAnswer, matchEvent, matchRoutine, summarizeCreated, summarizeProposal, wardrobeAnswer, wearPick, whereAnswer } from '../core/assistant.js';
-import { DIRECT_INTRO, DIRECT_LABEL, LIVE_INTRO, LIVE_LABEL, liveModeActive, resolveIntent } from '../core/liveModel.js';
-import { hasKey } from '../core/byok.js';
+import { DEMO_OFF_LABEL, DIRECT_LABEL, LIVE_LABEL, OFFLINE_LABEL, liveBadge, liveModeEnabled, liveStatus, resolveIntent, setLiveMode, transcribeDirect, transcribeViaMuse, warmProxy } from '../core/liveModel.js';
+import { MUSE_MODEL } from '../core/muse.js';
+import { TRANSCRIBE_MODEL } from '../core/transcribe.js';
+import { getKey, hasKey } from '../core/byok.js';
+import { clipSupported, startClip } from '../audioRecord.js';
 import { handsFreeEnabled, isConversationEnd, micErrorMessage, setHandsFree, speak, speakAndWait, startListeningUntilDone, stopSpeak, stripConversationEnd, voiceConfirm, type ListeningSession } from '../voice.js';
-import { keyFieldHtml, wireKeyField } from './key.js';
 import { showProposal } from './areas/desk.js';
 import { nextCommitment } from './room.js';
 import { esc, lastStored, type Ui } from '../shell.js';
@@ -18,6 +20,9 @@ import type { Capture, Proposal } from '../core/types.js';
 let sessionSeq = 0;
 let activeSession: ListeningSession | null = null;
 let nullStreak = 0, stopAfterTurn = false;
+/** When true, the opening utterance records a clip for Muse Voice Transcribe
+    instead of browser speech recognition. Follow-ups stay browser-side. */
+let museMic = false;
 
 const SLOT_PROMPTS: Record<ProposalSlot, (p: Proposal) => string> = {
   date: (p) => `What date is ${p.title}?`, time: (p) => `What time does ${p.title} start?`,
@@ -36,11 +41,14 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
     </div>`;
   const body = document.createElement('div');
   body.className = 'sheet-body';
-  const modeNote = hasKey() ? DIRECT_INTRO : liveModeActive() ? LIVE_INTRO : DEMO_LABEL;
-  body.innerHTML = `<p class="meta">Say a task, event, or thing to remember — e.g. “Dentist tomorrow at 2:30 pm”, “Buy batteries, 20 minutes”, or “Where is my adapter?”. You always confirm before anything is saved — by tap, or by voice when Hands-free is on. ${esc(modeNote)}.</p>
-    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn plain" id="as-start">🎙️ Start listening</button><button class="btn soft" id="as-desk">Type instead</button><button class="btn soft" id="as-handsfree">Hands-free: off</button></div>
-    ${keyFieldHtml('as')}
-    <p class="meta" id="as-status" aria-live="polite" style="margin-top:12px">Ready when you are.</p><div id="proposal"></div>`;
+  const status = liveStatus();
+  const badge = liveBadge();
+  body.innerHTML = `<p class="meta"><span class="chip ${status === 'live' || status === 'direct' ? '' : 'warn'}" title="Meta model path — details in AI setup">${esc(badge)}</span></p>
+    <p class="meta">Say it, then confirm it — nothing saves without your tap.
+    Try “Dentist tomorrow at 2:30 pm”.</p>
+    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn plain" id="as-start">🎙️ Start listening</button><button class="btn soft" id="as-desk">Type instead</button></div>
+    <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><button class="btn soft small" id="as-handsfree">Hands-free: off</button>${clipSupported() ? `<button class="btn soft small" id="as-input">Input: ${museMic ? 'Muse' : 'browser'}</button>` : ''}<button class="btn soft small" id="as-live">Live: ${liveModeEnabled() ? 'on' : 'off'}</button><button class="btn soft small" id="as-setup">AI setup</button></div>
+    <p class="meta" id="as-status" aria-live="polite" style="margin-top:12px">Ready when you are.</p><p class="meta" id="as-path">${esc(badge)}</p><div id="proposal"></div>`;
   sheetRoot.querySelector('.sheet')!.appendChild(body);
 
   const hf = body.querySelector<HTMLButtonElement>('#as-handsfree')!;
@@ -85,6 +93,14 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
   };
   sheetRoot.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
   body.querySelector('#as-desk')!.addEventListener('click', () => { close(); ui.open('desk', { focusAdd: true }); });
+  body.querySelector('#as-live')!.addEventListener('click', () => {
+    setLiveMode(!liveModeEnabled());
+    openAssistant(sheetRoot, ui);
+  });
+  body.querySelector('#as-input')?.addEventListener('click', () => {
+    museMic = !museMic;
+    openAssistant(sheetRoot, ui);
+  });
   startBtn.addEventListener('click', () => {
     if (activeSession) { activeSession.stop(); return; }
     if (busy) { stopLoop = true; return; }
@@ -96,14 +112,36 @@ export function openAssistant(sheetRoot: HTMLElement, ui: Ui): void {
         .finally(() => { busy = false; });
     }
   });
-  wireKeyField(body, ui, 'as', () => openAssistant(sheetRoot, ui));
+  body.querySelector('#as-setup')!.addEventListener('click', () => ui.setup());
+  warmProxy();
   if (handsFreeEnabled()) void conversationLoop();
   (sheetRoot.querySelector('.sheet-head button') as HTMLButtonElement).focus();
 }
 
-function setStatus(body: HTMLElement, text: string): void {
+function setStatus(body: HTMLElement, text: string, thinking = false): void {
   const el = body.querySelector('#as-status');
-  if (el) el.textContent = text.length > 220 ? text.slice(0, 220) + '…' : text;
+  if (!el) return;
+  el.textContent = text.length > 220 ? text.slice(0, 220) + '…' : text;
+  el.classList.toggle('thinking', thinking);
+}
+
+let thinkSeq = 0;
+
+/** Narrate a live wait: instant label, an honest nudge at 2.5s, then the
+    work's own result. Stale timers never overwrite a newer turn. */
+async function withThinking<T>(body: HTMLElement, label: string, work: () => Promise<T>): Promise<T> {
+  const token = ++thinkSeq;
+  setStatus(body, label, true);
+  const timer = window.setTimeout(() => {
+    if (token === thinkSeq && body.isConnected) {
+      setStatus(body, 'Still asking Muse — local backup ready', true);
+    }
+  }, 2500);
+  try {
+    return await work();
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 /** Hands-free confirm: ask aloud, then click the same yes/no button a tap would.
@@ -126,7 +164,7 @@ function offerVoiceConfirm(body: HTMLElement, alive: () => boolean, question: st
 async function listenUtterance(body: HTMLElement, start: HTMLButtonElement, hint: string): Promise<{ text: string | null; error: string | null }> {
   const idleLabel = '🎙️ Start listening';
   const session = startListeningUntilDone({
-    silenceMs: handsFreeEnabled() ? 3000 : 5000,
+    silenceMs: handsFreeEnabled() ? 3000 : 2500,
     onInterim: (text) => { if (body.isConnected) setStatus(body, text ? `Heard: “${text}”` : hint); },
   });
   activeSession = session; start.disabled = false; start.textContent = '⏺ Done';
@@ -136,6 +174,38 @@ async function listenUtterance(body: HTMLElement, start: HTMLButtonElement, hint
   activeSession = null;
   if (body.isConnected) { start.textContent = idleLabel; start.disabled = false; }
   return { text: out, error: out ? null : error };
+}
+
+/** One utterance via Muse Voice Transcribe: record a ≤10s clip, send its WAV
+    to the proxy (or direct with the user's key), and return the transcript. */
+async function transcribeUtterance(body: HTMLElement, start: HTMLButtonElement): Promise<{ text: string | null; error: string | null }> {
+  const idleLabel = '🎙️ Start listening';
+  if (!clipSupported()) return { text: null, error: 'recording unsupported here' };
+  setStatus(body, 'Recording for Muse… tap ⏺ Done within 10 seconds.');
+  start.textContent = '⏺ Done';
+  const clip = startClip(10000);
+  const onDone = (): void => clip.stop();
+  start.addEventListener('click', onDone, { once: true });
+  const b64 = await clip.done;
+  start.removeEventListener('click', onDone);
+  if (!body.isConnected) return { text: null, error: 'closed' };
+  start.textContent = idleLabel;
+  if (!b64) {
+    setStatus(body, 'Recording failed — check mic permission, or use browser input.');
+    return { text: null, error: 'recording failed' };
+  }
+  const t0 = Date.now();
+  const text = await withThinking(body, 'Transcribing with Muse', () => hasKey()
+    ? transcribeDirect(b64, getKey() ?? '')
+    : transcribeViaMuse(b64));
+  if (!text) {
+    setStatus(body, 'Muse transcription failed — try again, or use browser input.');
+    return { text: null, error: 'transcription failed' };
+  }
+  const pathEl = body.querySelector('#as-path');
+  if (pathEl) pathEl.textContent = `Muse Voice Transcribe • ${TRANSCRIBE_MODEL} • ${Date.now() - t0}ms`;
+  setStatus(body, `Heard: “${text}”`);
+  return { text, error: null };
 }
 
 /** Read-only lookup card for `where` and the ambiguous follow-up. True if matched. */
@@ -156,9 +226,11 @@ async function run(
   const convo = handsFreeEnabled();
   setStatus(body, convo
     ? 'Listening… speak naturally. Say “that’s it for now” to stop, or tap ⏹ Stop.'
-    : 'Listening… speak naturally. Tap ⏺ Done, say “that’s it”, or pause ~5 seconds when finished.');
+    : 'Listening… speak naturally. Tap ⏺ Done, say “that’s it”, or pause ~2 seconds when finished.');
   const t0 = Date.now();
-  const first = await listenUtterance(body, start, 'Listening… speak naturally.');
+  const first = museMic && clipSupported()
+    ? await transcribeUtterance(body, start)
+    : await listenUtterance(body, start, 'Listening… speak naturally.');
   let heard = first.text;
   if (!alive()) return;
   if (!heard) {
@@ -185,15 +257,30 @@ async function run(
   }
 
   // Live-first, local fallback (classify-raw-first/strip ordering inside).
-  const resolved = await resolveIntent(heard, store.state);
+  // The button says Working and the status narrates — never a frozen UI.
+  const idleLabel = '🎙️ Start listening';
+  start.disabled = true;
+  start.textContent = 'Working…';
+  let resolved: Awaited<ReturnType<typeof resolveIntent>>;
+  try {
+    resolved = await withThinking(body, 'Thinking', () => resolveIntent(heard, store.state));
+  } finally {
+    if (body.isConnected) { start.disabled = false; start.textContent = idleLabel; }
+  }
   if (resolved === 'empty') {
     setStatus(body, 'Okay, all done.');
     speak('Okay, all done.');
     return;
   }
   let intent = resolved.intent;
-  const live = resolved.live;
-  const direct = resolved.direct;
+  const pathEl = body.querySelector('#as-path');
+  if (pathEl) {
+    pathEl.textContent = resolved.live
+      ? `${resolved.direct ? 'Direct' : 'Live'} Muse • ${resolved.model} • ${resolved.latencyMs}ms`
+      : resolved.offline
+        ? `${OFFLINE_LABEL} • local ${resolved.latencyMs}ms`
+        : `${DEMO_OFF_LABEL} • local ${resolved.latencyMs}ms`;
+  }
 
   if (intent.kind === 'ambiguous') {
     const question = `“${intent.text}” — should I add that as new, or look it up?`;
@@ -510,7 +597,7 @@ async function run(
   setStatus(body, summarizeProposal(p));
   showProposal(body, ui, capture.id, {
     proposal: p,
-    label: direct ? DIRECT_LABEL : live ? LIVE_LABEL : undefined,
+    label: resolved.direct ? `${DIRECT_LABEL} • ${MUSE_MODEL}` : resolved.live ? `${LIVE_LABEL} • ${MUSE_MODEL}` : undefined,
     onFinished: (final, outcome) => {
       if (outcome === 'confirmed') speak(summarizeCreated(final));
       if (!handsFreeEnabled()) close();

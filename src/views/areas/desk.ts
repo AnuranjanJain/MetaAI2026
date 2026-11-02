@@ -3,9 +3,10 @@
 // a commitment until the user confirms the editable form.
 
 import { store } from '../../store.js';
-import { applyProposal, createId, nowIso } from '../../core/model.js';
+import { applyProposal, createId, nowIso, todayKey } from '../../core/model.js';
 import { splitLocationHint, matchLocationHint } from '../../core/assistant.js';
 import { DEMO_LABEL, propose, validateProposal } from '../../core/inference.js';
+import { resolveProposal } from '../../core/liveModel.js';
 import { startListeningUntilDone, voiceInputSupported, type ListeningSession } from '../../voice.js';
 import { readImageDataUrl, validateImageFile } from '../../image.js';
 import type { Capture, Id, Proposal } from '../../core/types.js';
@@ -123,10 +124,12 @@ export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: Sho
     const spot = hint ? matchLocationHint(hint, store.state) : null;
     if (spot) p.locationHint = spot.name;
   }
+  const canMuse = !opts.proposal && !opts.label && c.text.trim().length >= 3;
   host.innerHTML = `
     <div class="card" style="border-color:var(--terra)">
       <h3>Confirm before creating <span class="pill terra">${p.confidence} confidence</span></h3>
       <div class="demo-note">${esc(label)}. Check every field — the source is quoted below.</div>
+      ${canMuse ? '<p><button class="btn soft small" id="p-muse">Interpret with Muse</button> <span class="meta" id="p-muse-note"></span></p>' : ''}
       <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
         ${(['task', 'event', 'item', 'reference'] as const).map((t) =>
           `<button class="btn ${p.type === t ? 'plain' : 'soft'} small" data-type="${t}">${t}</button>`).join('')}
@@ -145,6 +148,28 @@ export function showProposal(body: HTMLElement, ui: Ui, captureId: Id, opts: Sho
   const fields = host.querySelector('#p-fields')!;
   const paint = () => paintFields(fields, p);
   paint();
+  host.querySelector('#p-muse')?.addEventListener('click', async () => {
+    const btn = host.querySelector<HTMLButtonElement>('#p-muse')!;
+    const note = host.querySelector('#p-muse-note')!;
+    btn.disabled = true;
+    note.textContent = 'Asking Muse…';
+    try {
+      const out = await resolveProposal(c.text, todayKey());
+      if (!host.isConnected) return;
+      if (!out) {
+        note.textContent = 'Muse unavailable — local reading above still works. Keys live in AI setup.';
+        ui.toast('Muse interpretation unavailable right now.');
+        return;
+      }
+      showProposal(body, ui, captureId, {
+        proposal: out.proposal,
+        label: `${out.direct ? 'Direct' : 'Live'} Muse proposal • ${out.model} • ${out.latencyMs}ms`,
+        onFinished: opts.onFinished,
+      });
+    } finally {
+      if (host.isConnected) btn.disabled = false;
+    }
+  });
   host.querySelectorAll<HTMLButtonElement>('[data-type]').forEach((b) =>
     b.addEventListener('click', () => {
       p.type = b.dataset.type as Proposal['type'];
@@ -198,6 +223,11 @@ function paintFields(host: Element, p: Proposal): void {
   }
   if (p.type === 'task') {
     html += f('Duration (minutes)', `<input type="number" data-f="durationMin" min="5" max="480" value="${p.durationMin ?? 30}" />`);
+    html += f('Repeat', `<select data-f="repeat">
+      <option value="">Just once</option>
+      <option value="daily" ${p.repeat === 'daily' ? 'selected' : ''}>Daily routine</option>
+      <option value="weekly" ${p.repeat === 'weekly' ? 'selected' : ''}>Weekly routine</option>
+    </select>`);
     html += f('Notes (optional)', `<input type="text" data-f="prep" value="${esc(p.prep ?? '')}" />`);
   }
   if (p.type === 'item') {
@@ -226,6 +256,8 @@ function readFields(host: Element, p: Proposal): void {
   if (p.type === 'task') {
     p.durationMin = Number(get('durationMin') ?? 30);
     p.prep = get('prep') || undefined;
+    const rep = get('repeat');
+    p.repeat = rep === 'daily' || rep === 'weekly' ? rep : undefined;
   }
   if (p.type === 'item') {
     p.itemName = get('itemName') || p.title;

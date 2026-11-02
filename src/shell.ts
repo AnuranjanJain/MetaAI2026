@@ -6,10 +6,13 @@ import { playMotif, playSoundtrack, configureSound } from './audio.js';
 import { player } from './music.js';
 import { summarizeChecklist, todayKey } from './core/model.js';
 import { searchBelongings } from './core/inference.js';
+import { liveBadge, liveStatus } from './core/liveModel.js';
+import { dueReminders, markNotified, notifiedIds, remindersEnabled } from './notify.js';
 import { listenOnce, voiceInputSupported } from './voice.js';
 import { renderRoom, nextCommitment, POSTER_OPTIONS, WALL_OPTIONS, type Area } from './views/room.js';
 import { renderTaskDock, renderMusicPlayer } from './docks.js';
 import { openAssistant } from './views/assistant.js';
+import { openKeys } from './views/setup.js';
 import { renderDesk } from './views/areas/desk.js';
 import { renderDoorway } from './views/areas/doorway.js';
 import { renderWardrobe } from './views/areas/wardrobe.js';
@@ -21,6 +24,8 @@ export interface Ui {
   toast: (msg: string, opts?: { action?: string; onAction?: () => void }) => void;
   close: () => void;
   open: (area: Area, opts?: { focusAdd?: boolean }) => void;
+  /** Open the central AI setup sheet (keys, backend, Live status). */
+  setup: () => void;
   sound: (m: 'desk' | 'doorway' | 'wardrobe' | 'shelf' | 'window' | 'done' | 'pack') => void;
 }
 
@@ -53,6 +58,7 @@ export class Shell {
       toast: (msg, opts) => this.toast(msg, opts),
       close: () => this.closeSheet(),
       open: (area, opts) => this.openSheet(area, opts),
+      setup: () => openKeys(this.sheetRoot, this.ui),
       sound: (m) => playMotif(m),
     };
     store.subscribe(() => this.render());
@@ -64,7 +70,32 @@ export class Shell {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.sheetRoot.innerHTML) this.closeSheet();
     });
+    const renewed = store.rollover();
     this.render();
+    if (renewed > 0) {
+      this.toast(`${renewed} routine task${renewed === 1 ? '' : 's'} renewed for today.`, {
+        action: 'Undo', onAction: () => store.undo(),
+      });
+    }
+    window.setTimeout(() => this.checkReminders(), 5000);
+    window.setInterval(() => this.checkReminders(), 60000);
+  }
+
+  /** Fire due local reminders once each. Silent unless opted in + granted. */
+  private checkReminders(): void {
+    if (!remindersEnabled() || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const now = Date.now();
+    const today = todayKey();
+    const seen = notifiedIds(today);
+    const fresh = dueReminders(store.state, now).filter((r) => !seen.has(r.id));
+    if (!fresh.length) return;
+    for (const r of fresh) {
+      try {
+        new Notification(r.title, { body: r.body, tag: r.id });
+      } catch { /* a toast still lands below */ }
+      this.toast(`${r.title} — ${r.body}`);
+    }
+    markNotified(today, fresh.map((r) => r.id));
   }
 
   private render(): void {
@@ -101,6 +132,8 @@ export class Shell {
     const doneToday = s.tasks.filter((t) => t.done && t.updatedAt.slice(0, 10) === todayKey()).length;
     const inbox = s.captures.filter((c) => c.status === 'inbox').length;
     const ready = total > 0 && packed >= total;
+    const mStatus = liveStatus();
+    const mBadge = liveBadge();
     this.topbar.innerHTML = `
       <div class="rail rail-left">
         <div class="brand">Pocketroom<small>today, in one little place</small></div>
@@ -122,10 +155,11 @@ export class Shell {
           <button class="icon-btn" data-act="undo" aria-label="Undo last change" title="Undo" ${store.canUndo ? '' : 'disabled'}>↩</button>
         </div>
         ${doneToday > 0 ? `<span class="chip" title="Tasks completed today">✓ ${doneToday} done today</span>` : ''}
+        <button class="chip ${mStatus === 'live' || mStatus === 'direct' ? '' : 'warn'}" data-act="keys" title="Meta model path — tap for AI setup">${esc(mBadge)}</button>
         ${voiceInputSupported() ? `<button class="btn soft small rail-wide" data-act="assistant">🎙️ Voice assistant</button>` : ''}
         <button class="btn soft small rail-wide" data-act="decor">🎨 Decorate wall</button>
         <span class="chip hide-late" title="${saveTitle}">${saveDot} ${store.saveState}</span>
-        <p class="rail-note hide-late">Everything stays on this device.</p>
+        <p class="rail-note hide-late">${mStatus === 'demo' ? 'Everything stays on this device.' : 'Live Muse reads transcripts you send; nothing saves without your tap.'}</p>
       </div>`;
     this.topbar.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((b) =>
       b.addEventListener('click', () => { this.view = b.dataset.view as View; this.render(); }));
@@ -136,6 +170,7 @@ export class Shell {
   private action(act: string): void {
     if (act === 'add') this.openAdd();
     else if (act === 'assistant') openAssistant(this.sheetRoot, this.ui);
+    else if (act === 'keys') openKeys(this.sheetRoot, this.ui);
     else if (act === 'desk') this.openSheet('desk');
     else if (act === 'decor') this.openSheet('decor');
     else if (act === 'search') this.openSearch();

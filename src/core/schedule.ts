@@ -6,6 +6,11 @@ import type { CalEvent, Id, Task } from './types.js';
 export const DAY_START = 8 * 60; // 08:00
 export const DAY_END = 22 * 60; // 22:00
 
+/** Tasks whose start time already passed and still aren't done. Pure. */
+export function overdueTasks(tasks: Task[], nowIso: string): Task[] {
+  return tasks.filter((t) => !t.done && t.start !== undefined && t.start < nowIso);
+}
+
 export function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
