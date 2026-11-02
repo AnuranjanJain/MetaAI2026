@@ -61,10 +61,11 @@ key, provider radio, Live toggle, and per-path status live here only —
 assistant and wardrobe link here instead of asking for keys.
 
 **Assistant latency + live feedback**
-Live interpret budget 15s → 6s with instant local fallback, proxy warmup
-pings on sheet open, silence gate 5s → 2.5s, staged "Thinking" narration
-with animated dots, Working button state. Worst case ~8s with narration
-instead of ~20s frozen. Tests: budget-fallback + warmup in
+Live interpret budget 6s → 30s (client) / 25s (proxy upstream): the
+contributor-tier model needs ~10s+ per call, so the 6s budget meant Live
+never won and every turn showed fallback. Proxy warmup pings on sheet open,
+silence gate 5s → 2.5s, staged "Thinking" narration with animated dots,
+Working button state. Tests: budget-fallback + warmup in
 `tests/liveModel.test.ts`.
 
 **Daily-routine loop (the "use it every day" slice)**

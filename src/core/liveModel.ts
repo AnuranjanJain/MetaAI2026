@@ -25,8 +25,8 @@ export const OPEN_INTRO = 'Open-weights mode is on — Muse Spark Open on Basete
 const LIVE_KEY = 'pocketroom.liveMuse';
 const MAX_TRANSCRIPT = 1000;
 const MAX_FIELD = 500;
-/** Live interpret budget: slow answers lose to instant local fallback. */
-const DEFAULT_TIMEOUT_MS = 6000;
+/** Live interpret budget: must exceed the proxy's ~25s upstream budget. */
+const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_IMAGE_CHARS = 2000000;
 const DEFAULT_TAG_TIMEOUT_MS = 30000;
 

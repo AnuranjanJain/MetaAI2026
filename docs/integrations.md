@@ -104,7 +104,8 @@ behind a server route hosted on Vercel:
   network. Empty and overlong (>1000 chars) transcripts are rejected at
   the boundary with 400/413.
 - The client adapter is `src/core/liveModel.ts`:
-  `interpretViaMuse(transcript)` POSTs with a ~15s timeout, schema-checks
+  `interpretViaMuse(transcript)` POSTs with a ~30s timeout (proxy upstream
+  ~25s — the contributor tier needs ~10s+ per call), schema-checks
   the response (exact keys per intent kind, string types, length caps),
   and returns `null` on any failure, timeout, or mismatch. The response
   is untrusted input, exactly like demo inference output.

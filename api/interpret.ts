@@ -8,8 +8,8 @@ import type { AssistantIntent } from '../src/core/assistant.js';
 import { INTERPRET_PROMPT, MUSE_MODEL, MUSE_URL, extractJsonObject, replyText, toIntent } from '../src/core/muse.js';
 
 const MAX_TRANSCRIPT = 1000;
-/** Upstream budget, kept well inside the client's ~15s timeout. */
-const UPSTREAM_TIMEOUT_MS = 9000;
+/** Upstream budget, kept inside the client's ~30s timeout. */
+const UPSTREAM_TIMEOUT_MS = 25000;
 
 /** Minimal structural types so this file needs no extra dependency. */
 interface ProxyReq {
