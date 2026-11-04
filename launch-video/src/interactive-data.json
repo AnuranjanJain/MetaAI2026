@@ -1,0 +1,865 @@
+{
+  "scenes": [
+    {
+      "id": "capture",
+      "title": "Capture a thought",
+      "detail": "Add → write → review → confirm",
+      "from": 20,
+      "duration": 16,
+      "src": "edited/capture.mp4",
+      "clicks": [
+        {
+          "at": 0.8565232279420154,
+          "x": 1292,
+          "y": 56.59375
+        },
+        {
+          "at": 2.662709736331469,
+          "x": 1200,
+          "y": 110.59375
+        },
+        {
+          "at": 10.948521858235358,
+          "x": 1053.515625,
+          "y": 454.0625
+        },
+        {
+          "at": 12.793060152950577,
+          "x": 1385.0703125,
+          "y": 603.015625
+        },
+        {
+          "at": 14.71064946923867,
+          "x": 1069.6015625,
+          "y": 865.078125
+        }
+      ]
+    },
+    {
+      "id": "muse",
+      "title": "Your assistant. Your choice.",
+      "detail": "Live Muse on / off · voice input",
+      "from": 36,
+      "duration": 7,
+      "src": "edited/muse.mp4",
+      "clicks": [
+        {
+          "at": 0.4076898118105108,
+          "x": 1389.8125,
+          "y": 29
+        },
+        {
+          "at": 1.5501297858533407,
+          "x": 1292,
+          "y": 224.1875
+        },
+        {
+          "at": 2.7391304347826084,
+          "x": 1389.8125,
+          "y": 29
+        },
+        {
+          "at": 3.879299156391953,
+          "x": 1292,
+          "y": 176.1875
+        },
+        {
+          "at": 5.009247242050617,
+          "x": 1200,
+          "y": 345.65625
+        },
+        {
+          "at": 6.201654769630116,
+          "x": 1200,
+          "y": 345.65625
+        }
+      ]
+    },
+    {
+      "id": "decor",
+      "title": "A room that feels like you",
+      "detail": "Wall colours · custom poster",
+      "from": 43,
+      "duration": 7,
+      "src": "edited/decor.mp4",
+      "clicks": [
+        {
+          "at": 0.5925771476230194,
+          "x": 1292,
+          "y": 268.1875
+        },
+        {
+          "at": 2.0419099249374484,
+          "x": 1062,
+          "y": 211.46875
+        },
+        {
+          "at": 5.943286071726437,
+          "x": 1389.8125,
+          "y": 29
+        }
+      ]
+    },
+    {
+      "id": "music",
+      "title": "Set the mood",
+      "detail": "Name · add track · play",
+      "from": 50,
+      "duration": 11,
+      "src": "edited/music.mp4",
+      "clicks": [
+        {
+          "at": 1.098062243100411,
+          "x": 1077.875,
+          "y": 622.875
+        },
+        {
+          "at": 5.338520258367596,
+          "x": 1009.6015625,
+          "y": 554.03125
+        },
+        {
+          "at": 8.90076335877863,
+          "x": 1389.8125,
+          "y": 29
+        }
+      ]
+    },
+    {
+      "id": "wardrobe",
+      "title": "From photo to wardrobe",
+      "detail": "Muse Spark vision · review · categorise",
+      "from": 61,
+      "duration": 22,
+      "src": "edited/wardrobe.mp4",
+      "clicks": [
+        {
+          "at": 0.32172318973418806,
+          "x": 384.3062438964844,
+          "y": 448.9523620605469
+        },
+        {
+          "at": 2.6911090742438137,
+          "x": 1043.453125,
+          "y": 479.46875
+        },
+        {
+          "at": 10.855000000000018,
+          "x": 1298.7890625,
+          "y": 479.34375
+        }
+      ]
+    },
+    {
+      "id": "outfit",
+      "title": "One less morning decision",
+      "detail": "Occasions · keep ideas · build an outfit",
+      "from": 83,
+      "duration": 9,
+      "src": "edited/outfit.mp4",
+      "clicks": [
+        {
+          "at": 1.8311538461538475,
+          "x": 1064.234375,
+          "y": 635.09375
+        },
+        {
+          "at": 6.826153846153856,
+          "x": 1364.265625,
+          "y": 877.90625
+        }
+      ]
+    },
+    {
+      "id": "window",
+      "title": "Make space for the day",
+      "detail": "Events · flexible tasks · schedule · done",
+      "from": 92,
+      "duration": 14,
+      "src": "edited/window.mp4",
+      "clicks": [
+        {
+          "at": 0.43527353689566467,
+          "x": 1389.8125,
+          "y": 29
+        },
+        {
+          "at": 1.656488549618305,
+          "x": 866.2281188964844,
+          "y": 382.9499969482422
+        },
+        {
+          "at": 2.8676844783714954,
+          "x": 1026.5078125,
+          "y": 831.53125
+        },
+        {
+          "at": 5.464853689567423,
+          "x": 1349.4453125,
+          "y": 877.125
+        },
+        {
+          "at": 6.610368956742993,
+          "x": 1125.5,
+          "y": 831.75
+        },
+        {
+          "at": 9.671755725190831,
+          "x": 1346.859375,
+          "y": 878.34375
+        },
+        {
+          "at": 10.862913486005073,
+          "x": 1315,
+          "y": 479.28125
+        },
+        {
+          "at": 12.068543256997454,
+          "x": 1296.0859375,
+          "y": 392.109375
+        },
+        {
+          "at": 13.196246819338413,
+          "x": 1380.203125,
+          "y": 479.28125
+        }
+      ]
+    },
+    {
+      "id": "captain",
+      "title": "A brain dump. A clear plan.",
+      "detail": "Morning Captain · review before accepting",
+      "from": 106,
+      "duration": 11,
+      "src": "edited/captain.mp4",
+      "clicks": [
+        {
+          "at": 6.262821143813364,
+          "x": 1049.828125,
+          "y": 479.09375
+        },
+        {
+          "at": 10.235554680578808,
+          "x": 1078.1484375,
+          "y": 479.21875
+        }
+      ]
+    },
+    {
+      "id": "share",
+      "title": "Close today. Open tomorrow.",
+      "detail": "Download poster · carry forward · wrap day",
+      "from": 117,
+      "duration": 9,
+      "src": "edited/share.mp4",
+      "clicks": [
+        {
+          "at": 3.0775004363763285,
+          "x": 1067.9921875,
+          "y": 479.1875
+        },
+        {
+          "at": 4.659451911328332,
+          "x": 1104.796875,
+          "y": 728.90625
+        },
+        {
+          "at": 6.332518764182225,
+          "x": 1293.734375,
+          "y": 779.28125
+        },
+        {
+          "at": 7.978879385582119,
+          "x": 1009.296875,
+          "y": 90
+        }
+      ]
+    },
+    {
+      "id": "door",
+      "title": "Leave with a little less stress",
+      "detail": "Packing · routines · storage · essentials",
+      "from": 126,
+      "duration": 17,
+      "src": "edited/door.mp4",
+      "clicks": [
+        {
+          "at": 0.3803448939034442,
+          "x": 1389.8125,
+          "y": 29
+        },
+        {
+          "at": 1.4756074107314419,
+          "x": 1024.0749816894531,
+          "y": 427.65000915527344
+        },
+        {
+          "at": 3.2400153856016267,
+          "x": 1053.484375,
+          "y": 238.21875
+        },
+        {
+          "at": 5.656131803320727,
+          "x": 1383.796875,
+          "y": 626.765625
+        },
+        {
+          "at": 9.111930251939222,
+          "x": 1377,
+          "y": 835.140625
+        },
+        {
+          "at": 11.032181550099363,
+          "x": 1336.96875,
+          "y": 238.21875
+        },
+        {
+          "at": 13.758894800948758,
+          "x": 1209.625,
+          "y": 238.21875
+        }
+      ]
+    }
+  ],
+  "speech": [
+    {
+      "id": "hook",
+      "from": 0,
+      "duration": 5,
+      "text": "Your whole day is scattered. Pocketroom brings it home.",
+      "src": "audio/interactive/hook-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "story",
+      "from": 5,
+      "duration": 15,
+      "text": "A note gets lost. A meeting sneaks up. The right clothes are still in the laundry. And at the door: did you pack everything? Meet Pocketroom: one living room for the little things that make a day work.",
+      "src": "audio/interactive/story-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "capture",
+      "from": 20,
+      "duration": 16,
+      "text": "On the live site, add a design review with its time and what to bring. Save the capture, ask Muse to interpret it, then review and confirm the proposal. Or open the voice assistant and speak your thought instead.",
+      "src": "audio/interactive/capture-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "muse",
+      "from": 36,
+      "duration": 7,
+      "text": "Muse live on: model-powered help when you choose. Turn it off, and the local experience stays right here.",
+      "src": "audio/interactive/muse-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "decor",
+      "from": 43,
+      "duration": 7,
+      "text": "Change the wall colour, then make the room yours with a custom poster.",
+      "src": "audio/interactive/decor-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "music",
+      "from": 50,
+      "duration": 11,
+      "text": "Open the record player. Name a playlist, add Morning Window, and play it. Your mixes and uploaded songs stay in this browser.",
+      "src": "audio/interactive/music-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "wardrobe",
+      "from": 61,
+      "duration": 22,
+      "text": "From wardrobe, add a photo and ask Muse Spark vision to identify the clothes. Review the named drafts, save the pieces you want, then mark items worn, in laundry, or unavailable. Occasion ideas only use clothes you can wear.",
+      "src": "audio/interactive/wardrobe-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "outfit",
+      "from": 83,
+      "duration": 9,
+      "text": "Choose an occasion for outfit ideas. Keep a suggestion, or build and save your own look.",
+      "src": "audio/interactive/outfit-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "window",
+      "from": 92,
+      "duration": 14,
+      "text": "At the window, schedule a meeting, add a flexible task, place it in an open slot, then mark it done. Fixed events stay put; your plan stays editable.",
+      "src": "audio/interactive/window-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "captain",
+      "from": 106,
+      "duration": 11,
+      "text": "Morning Captain turns a brain dump into a proposed plan. Review its tasks and timing, then accept the changes yourself.",
+      "src": "audio/interactive/captain-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "share",
+      "from": 117,
+      "duration": 9,
+      "text": "Share today as a poster. Wrap up, or carry unfinished work into tomorrow.",
+      "src": "audio/interactive/share-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "door",
+      "from": 126,
+      "duration": 17,
+      "text": "Before you leave, choose an event, build a packing list, add a water bottle, and check items off. Save a routine, link belongings to their shelf, read the list aloud, or switch to essentials when you are late.",
+      "src": "audio/interactive/door-fit.wav",
+      "rate": 1
+    },
+    {
+      "id": "arch-local",
+      "from": 0,
+      "duration": 14,
+      "text": "Behind the room: Vite, strict TypeScript, and a hand-built SVG interface. One state store connects scheduling, outfits and packing. Your day stays in localStorage; music uploads use IndexedDB. Intelligence is optional. The core works locally.",
+      "src": "audio/interactive/arch-local-fit.wav",
+      "rate": 1.4289377289377287
+    },
+    {
+      "id": "arch-routing",
+      "from": 14,
+      "duration": 15,
+      "text": "Live requests use your browser key directly, or a Vercel proxy with a server secret. Spark understands intent and photos. Captain tries Wonder, then Spark, then a labeled local fallback. Baseten is a separate, optional provider.",
+      "src": "audio/interactive/arch-routing-fit.wav",
+      "rate": 1.0746075085324232
+    },
+    {
+      "id": "arch-routes",
+      "from": 29,
+      "duration": 14,
+      "text": "Each API route has a job. Interpret and propose structure your input. Tag-photo drafts clothing. The Captain routes propose plans. Transcribe handles speech. Dream creates posters; SAM segments images through the proxy. Responses are normalized before use.",
+      "src": "audio/interactive/arch-routes-fit.wav",
+      "rate": 1.3813186813186813
+    },
+    {
+      "id": "arch-trust",
+      "from": 43,
+      "duration": 12,
+      "text": "Finally, the trust boundary. Code checks every proposal: fields, IDs, times and conflicts. Fixed events stay fixed. Outfits use available clothes. You review and confirm. One undoable update changes your room. You stay in control.",
+      "src": "audio/interactive/arch-trust-fit.wav",
+      "rate": 1.490901287553648
+    },
+    {
+      "id": "outro",
+      "from": 198,
+      "duration": 3,
+      "text": "Pocketroom. Make room for today.",
+      "src": "audio/interactive/outro-fit.wav",
+      "rate": 1
+    }
+  ],
+  "captions": [
+    {
+      "text": "Your whole day is scattered.",
+      "from": 0.046,
+      "to": 1.138
+    },
+    {
+      "text": "Pocketroom brings it home.",
+      "from": 1.312,
+      "to": 2.531
+    },
+    {
+      "text": "A note gets lost.",
+      "from": 5.023,
+      "to": 6.045
+    },
+    {
+      "text": "A meeting sneaks up.",
+      "from": 6.312,
+      "to": 7.461
+    },
+    {
+      "text": "The right clothes are still in the laundry.",
+      "from": 7.728,
+      "to": 9.504999999999999
+    },
+    {
+      "text": "And at the door: did you pack everything?",
+      "from": 9.876000000000001,
+      "to": 12.21
+    },
+    {
+      "text": "Meet Pocketroom: one living room for the little",
+      "from": 13.139,
+      "to": 15.937
+    },
+    {
+      "text": "things that make a day work.",
+      "from": 15.937,
+      "to": 17.597
+    },
+    {
+      "text": "On the live site, add a design review with its time",
+      "from": 20.023,
+      "to": 22.67
+    },
+    {
+      "text": "and what to bring.",
+      "from": 22.67,
+      "to": 23.483
+    },
+    {
+      "text": "Save the capture, ask Muse to interpret it, then",
+      "from": 23.982,
+      "to": 27.082
+    },
+    {
+      "text": "review and confirm the proposal.",
+      "from": 27.082,
+      "to": 28.858
+    },
+    {
+      "text": "Or open the voice assistant and speak your thought",
+      "from": 29.288,
+      "to": 31.749000000000002
+    },
+    {
+      "text": "instead.",
+      "from": 31.749000000000002,
+      "to": 32.353
+    },
+    {
+      "text": "Muse live on: model-powered help when you choose.",
+      "from": 36.023,
+      "to": 39.007
+    },
+    {
+      "text": "Turn it off, and the local experience stays right",
+      "from": 39.506,
+      "to": 41.921
+    },
+    {
+      "text": "here.",
+      "from": 41.921,
+      "to": 42.281
+    },
+    {
+      "text": "Change the wall colour, then make the room yours",
+      "from": 43.058,
+      "to": 45.485
+    },
+    {
+      "text": "with a custom poster.",
+      "from": 45.485,
+      "to": 46.518
+    },
+    {
+      "text": "Open the record player.",
+      "from": 50.023,
+      "to": 51.033
+    },
+    {
+      "text": "Name a playlist, add Morning Window, and play it.",
+      "from": 51.242,
+      "to": 53.959
+    },
+    {
+      "text": "Your mixes and uploaded songs stay in this browser.",
+      "from": 54.331,
+      "to": 56.896
+    },
+    {
+      "text": "From wardrobe, add a photo and ask Muse Spark vision",
+      "from": 61.046,
+      "to": 63.972
+    },
+    {
+      "text": "to identify the clothes.",
+      "from": 63.972,
+      "to": 65.238
+    },
+    {
+      "text": "Review the named drafts, save the pieces you want,",
+      "from": 65.667,
+      "to": 68.814
+    },
+    {
+      "text": "then mark items worn, in laundry, or unavailable.",
+      "from": 68.814,
+      "to": 72.18
+    },
+    {
+      "text": "Occasion ideas only use clothes you can wear.",
+      "from": 72.761,
+      "to": 75.42
+    },
+    {
+      "text": "Choose an occasion for outfit ideas.",
+      "from": 83.046,
+      "to": 85.009
+    },
+    {
+      "text": "Keep a suggestion, or build and save your own look.",
+      "from": 85.334,
+      "to": 88.457
+    },
+    {
+      "text": "At the window, schedule a meeting, add a flexible",
+      "from": 92.035,
+      "to": 94.357
+    },
+    {
+      "text": "task, place it in an open slot, then mark it done.",
+      "from": 94.357,
+      "to": 97.81700000000001
+    },
+    {
+      "text": "Fixed events stay put; your plan stays editable.",
+      "from": 98.49,
+      "to": 101.648
+    },
+    {
+      "text": "Morning Captain turns a brain dump into a proposed",
+      "from": 106.035,
+      "to": 108.368
+    },
+    {
+      "text": "plan.",
+      "from": 108.368,
+      "to": 108.763
+    },
+    {
+      "text": "Review its tasks and timing, then accept the changes",
+      "from": 109.135,
+      "to": 111.828
+    },
+    {
+      "text": "yourself.",
+      "from": 111.828,
+      "to": 112.269
+    },
+    {
+      "text": "Share today as a poster.",
+      "from": 117.023,
+      "to": 118.3
+    },
+    {
+      "text": "Wrap up, or carry unfinished work into tomorrow.",
+      "from": 118.8,
+      "to": 121.342
+    },
+    {
+      "text": "Before you leave, choose an event, build a packing",
+      "from": 126.046,
+      "to": 128.682
+    },
+    {
+      "text": "list, add a water bottle, and check items off.",
+      "from": 128.682,
+      "to": 131.782
+    },
+    {
+      "text": "Save a routine, link belongings to their shelf,",
+      "from": 132.211,
+      "to": 135.242
+    },
+    {
+      "text": "read the list aloud, or switch to essentials when",
+      "from": 135.242,
+      "to": 137.842
+    },
+    {
+      "text": "you are late.",
+      "from": 137.842,
+      "to": 138.434
+    },
+    {
+      "text": "Behind the room: Vite, strict TypeScript, and a",
+      "from": 0.02449371955908742,
+      "to": 2.2828146629069472
+    },
+    {
+      "text": "hand-built S V G interface.",
+      "from": 2.2828146629069472,
+      "to": 4.1597334016918746
+    },
+    {
+      "text": "One state store connects scheduling, outfits and",
+      "from": 4.631412458344015,
+      "to": 6.491535503716996
+    },
+    {
+      "text": "packing.",
+      "from": 6.491535503716996,
+      "to": 6.857541655985646
+    },
+    {
+      "text": "Your day stays in localStorage; music uploads use",
+      "from": 7.206752114842349,
+      "to": 9.774393745193542
+    },
+    {
+      "text": "IndexedDB.",
+      "from": 9.774393745193542,
+      "to": 10.659666752114843
+    },
+    {
+      "text": "Intelligence is optional.",
+      "from": 11.309800051268908,
+      "to": 12.406418866957193
+    },
+    {
+      "text": "The core works locally.",
+      "from": 12.666752114842351,
+      "to": 13.584916688028711
+    },
+    {
+      "text": "Live requests use your browser key directly, or",
+      "from": 14.032570031124944,
+      "to": 16.636311376484787
+    },
+    {
+      "text": "a Vercel proxy with a server secret.",
+      "from": 16.636311376484787,
+      "to": 18.57004065298863
+    },
+    {
+      "text": "Spark understands intent and photos.",
+      "from": 19.03439623959855,
+      "to": 21.476218001651528
+    },
+    {
+      "text": "Captain tries Wonder, then Spark, then a labeled",
+      "from": 22.016880518325607,
+      "to": 25.127783776916726
+    },
+    {
+      "text": "local fallback.",
+      "from": 25.127783776916726,
+      "to": 26.036022359143747
+    },
+    {
+      "text": "Baseten is a separate, optional provider.",
+      "from": 26.3384583624468,
+      "to": 28.542053611128757
+    },
+    {
+      "text": "Each API route has a job.",
+      "from": 29.033301511535402,
+      "to": 30.260389817024663
+    },
+    {
+      "text": "Interpret and propose structure your input.",
+      "from": 30.411694510739856,
+      "to": 32.429331742243434
+    },
+    {
+      "text": "Tag-photo drafts clothing.",
+      "from": 32.66461416070008,
+      "to": 33.97568019093079
+    },
+    {
+      "text": "The Captain routes propose plans.",
+      "from": 34.21096260938743,
+      "to": 35.74066030230708
+    },
+    {
+      "text": "Transcribe handles speech.",
+      "from": 36.051957040572795,
+      "to": 37.396324582338906
+    },
+    {
+      "text": "Dream creates posters; sam segments images through",
+      "from": 37.707621320604616,
+      "to": 40.06913285600636
+    },
+    {
+      "text": "the proxy.",
+      "from": 40.06913285600636,
+      "to": 40.63236276849642
+    },
+    {
+      "text": "Responses are normalized before use.",
+      "from": 40.90167064439141,
+      "to": 42.59932378679395
+    },
+    {
+      "text": "Finally, the trust boundary.",
+      "from": 43.01542691001209,
+      "to": 44.09799355173009
+    },
+    {
+      "text": "Code checks every proposal: fields, I Ds, times",
+      "from": 44.315982497553115,
+      "to": 47.189412171109446
+    },
+    {
+      "text": "and conflicts.",
+      "from": 47.189412171109446,
+      "to": 47.8668547412056
+    },
+    {
+      "text": "Fixed events stay fixed.",
+      "from": 48.084843687028616,
+      "to": 49.32302089930336
+    },
+    {
+      "text": "Outfits use available clothes.",
+      "from": 49.572534400368475,
+      "to": 50.74833323737693
+    },
+    {
+      "text": "You review and confirm.",
+      "from": 50.92741954056077,
+      "to": 51.81480223386493
+    },
+    {
+      "text": "One undoable update changes your room.",
+      "from": 52.103218377569235,
+      "to": 53.699568196211644
+    },
+    {
+      "text": "You stay in control.",
+      "from": 53.839751856756294,
+      "to": 54.54067015947953
+    },
+    {
+      "text": "Pocketroom.",
+      "from": 198.046,
+      "to": 198.615
+    },
+    {
+      "text": "Make room for today.",
+      "from": 198.685,
+      "to": 199.614
+    }
+  ],
+  "architecture": [
+    {
+      "id": "arch-local",
+      "from": 0,
+      "duration": 14,
+      "text": "Behind the room: Vite, strict TypeScript, and a hand-built SVG interface. One state store connects scheduling, outfits and packing. Your day stays in localStorage; music uploads use IndexedDB. Intelligence is optional. The core works locally."
+    },
+    {
+      "id": "arch-routing",
+      "from": 14,
+      "duration": 15,
+      "text": "Live requests use your browser key directly, or a Vercel proxy with a server secret. Spark understands intent and photos. Captain tries Wonder, then Spark, then a labeled local fallback. Baseten is a separate, optional provider."
+    },
+    {
+      "id": "arch-routes",
+      "from": 29,
+      "duration": 14,
+      "text": "Each API route has a job. Interpret and propose structure your input. Tag-photo drafts clothing. The Captain routes propose plans. Transcribe handles speech. Dream creates posters; SAM segments images through the proxy. Responses are normalized before use."
+    },
+    {
+      "id": "arch-trust",
+      "from": 43,
+      "duration": 12,
+      "text": "Finally, the trust boundary. Code checks every proposal: fields, IDs, times and conflicts. Fixed events stay fixed. Outfits use available clothes. You review and confirm. One undoable update changes your room. You stay in control."
+    }
+  ]
+}

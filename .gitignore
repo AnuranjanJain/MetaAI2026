@@ -6,3 +6,7 @@ dist/
 
 .vercel
 .env*
+
+# launch-video renders: final cut lives on YouTube, raw clips stay local
+launch-video/out/
+launch-video/public/

@@ -1,0 +1,262 @@
+{
+ "title": {
+  "dur": 3.575873,
+  "caps": [
+   {
+    "text": "Your day has a thousand pieces.",
+    "from": 0,
+    "to": 1.672
+   },
+   {
+    "text": "Pocketroom gives them one home.",
+    "from": 1.672,
+    "to": 3.344
+   }
+  ]
+ },
+ "setup": {
+  "dur": 7.383946,
+  "caps": [
+   {
+    "text": "It starts with trust.",
+    "from": 0,
+    "to": 1.312
+   },
+   {
+    "text": "Your Muse key stays in your browser.",
+    "from": 1.312,
+    "to": 3.855
+   },
+   {
+    "text": "Live is on -- and every answer names its model.",
+    "from": 3.855,
+    "to": 7.152
+   }
+  ]
+ },
+ "voice": {
+  "dur": 10.40254,
+  "caps": [
+   {
+    "text": "Say it. Muse transcribes your voice, understands",
+    "from": 0,
+    "to": 3.262
+   },
+   {
+    "text": "the plan -- mall, tomorrow, two -- and asks before",
+    "from": 3.262,
+    "to": 6.757
+   },
+   {
+    "text": "anything saves.",
+    "from": 6.757,
+    "to": 7.767
+   },
+   {
+    "text": "Nothing ever saves without your tap.",
+    "from": 7.767,
+    "to": 10.077
+   }
+  ]
+ },
+ "wardrobe": {
+  "dur": 12.260136,
+  "caps": [
+   {
+    "text": "Point at your closet.",
+    "from": 0,
+    "to": 1.347
+   },
+   {
+    "text": "Muse vision reads the photo and drafts twelve",
+    "from": 1.347,
+    "to": 4.551
+   },
+   {
+    "text": "pieces -- names, colors, tags.",
+    "from": 4.551,
+    "to": 7.175
+   },
+   {
+    "text": "Keep what you love.",
+    "from": 7.175,
+    "to": 8.44
+   },
+   {
+    "text": "Then pick tonight's outfit from what you can",
+    "from": 8.44,
+    "to": 11.238
+   },
+   {
+    "text": "actually wear.",
+    "from": 11.238,
+    "to": 12.074
+   }
+  ]
+ },
+ "decorate": {
+  "dur": 3.808073,
+  "caps": [
+   {
+    "text": "And make the room yours -- walls, posters, your",
+    "from": 0,
+    "to": 3.077
+   },
+   {
+    "text": "own art.",
+    "from": 3.077,
+    "to": 3.808
+   }
+  ]
+ },
+ "shelves": {
+  "dur": 12.631655,
+  "caps": [
+   {
+    "text": "The room remembers, so you don't have to.",
+    "from": 0,
+    "to": 2.438
+   },
+   {
+    "text": "A spot for everything -- the adapter lives in",
+    "from": 2.438,
+    "to": 5.921
+   },
+   {
+    "text": "the top desk drawer.",
+    "from": 5.921,
+    "to": 7.105
+   },
+   {
+    "text": "Even the keys you haven't found yet stay on the",
+    "from": 7.105,
+    "to": 9.834
+   },
+   {
+    "text": "list, honestly marked unknown.",
+    "from": 9.834,
+    "to": 12.457
+   }
+  ]
+ },
+ "doorway": {
+  "dur": 8.730703,
+  "caps": [
+   {
+    "text": "When it is time to leave, the doorway packs by",
+    "from": 0,
+    "to": 3.111
+   },
+   {
+    "text": "routine. Adapter, keys, charger.",
+    "from": 3.111,
+    "to": 6.908
+   },
+   {
+    "text": "Nothing left behind.",
+    "from": 6.908,
+    "to": 8.568
+   }
+  ]
+ },
+ "captain": {
+  "dur": 10.40254,
+  "caps": [
+   {
+    "text": "Each morning, dump the day in one breath.",
+    "from": 0,
+    "to": 2.624
+   },
+   {
+    "text": "Morning Captain, running on Muse Wonder, plans",
+    "from": 2.624,
+    "to": 6.142
+   },
+   {
+    "text": "around your fixed events.",
+    "from": 6.142,
+    "to": 7.674
+   },
+   {
+    "text": "Review it -- accept it -- done.",
+    "from": 7.674,
+    "to": 10.217
+   }
+  ]
+ },
+ "share": {
+  "dur": 5.944308,
+  "caps": [
+   {
+    "text": "Share the day as a poster, dream it bigger with",
+    "from": 0,
+    "to": 2.659
+   },
+   {
+    "text": "Muse Image, then wrap up and carry forward.",
+    "from": 2.659,
+    "to": 5.689
+   }
+  ]
+ },
+ "vibe": {
+  "dur": 4.829751,
+  "caps": [
+   {
+    "text": "Leave with a list that reads itself aloud.",
+    "from": 0,
+    "to": 2.786
+   },
+   {
+    "text": "Come home to your music.",
+    "from": 2.786,
+    "to": 4.69
+   }
+  ]
+ },
+ "search": {
+  "dur": 8.080544,
+  "caps": [
+   {
+    "text": "And when something goes missing -- where did",
+    "from": 0,
+    "to": 2.728
+   },
+   {
+    "text": "I put the adapter?",
+    "from": 2.728,
+    "to": 4.11
+   },
+   {
+    "text": "The room answers.",
+    "from": 4.11,
+    "to": 5.944
+   },
+   {
+    "text": "Top desk drawer.",
+    "from": 5.944,
+    "to": 7.918
+   }
+  ]
+ },
+ "outro": {
+  "dur": 3.900952,
+  "caps": [
+   {
+    "text": "Pocketroom.",
+    "from": 0,
+    "to": 0.929
+   },
+   {
+    "text": "Make room for today.",
+    "from": 0.929,
+    "to": 2.368
+   },
+   {
+    "text": "Built with Muse.",
+    "from": 2.368,
+    "to": 3.738
+   }
+  ]
+ }
+}

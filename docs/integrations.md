@@ -142,7 +142,8 @@ behind a server route hosted on Vercel:
   the app falls back to local `classifyIntent` with the existing
   classify-raw-first/strip ordering — and the fallback is always labeled
   (`Muse unreachable — on-device fallback` or `Demo mode`), never silent.
-  Interpret turns get a 6s live budget, then local answers instantly;
+  Interpret turns get a 30s live budget (proxy upstream ~25s — the
+  contributor tier needs ~10s+ per call), then local answers instantly;
   opening the assistant warms the proxy routes (`warmProxy`, OPTIONS,
   no user data) so cold starts don't eat the budget.
 - `done` intents are always resolved locally: task identity lives only on

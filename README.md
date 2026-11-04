@@ -1,6 +1,3 @@
-<!-- Screenshots: save the 8 reference images under docs/screenshots/
-     as 01-room.png … 08-desk.png (map in docs/screenshots/README.md). -->
-
 <p align="center">
   <img src="docs/images/cozy-header.jpg" alt="A cozy pink pixel-art pocket room at dusk" width="100%" />
 </p>
@@ -11,6 +8,7 @@
 
 <p align="center">
   <a href="https://pocketroom-six.vercel.app/"><img src="https://img.shields.io/badge/try_it-live_demo-ff8fab" alt="Live demo" /></a>
+  <a href="https://youtu.be/LaiRvqQhgWE"><img src="https://img.shields.io/badge/watch-3_min_demo-ff8fab" alt="Demo video" /></a>
   <img src="https://img.shields.io/badge/tests-228_passing-ff8fab" alt="228 tests passing" />
   <img src="https://img.shields.io/badge/local--first-your_data_stays_home-ff8fab" alt="Local-first" />
   <img src="https://img.shields.io/badge/license-MIT-ff8fab" alt="MIT license" />
@@ -181,7 +179,7 @@ src/
   music.ts     # synth player + uploads + playlists
   audio.ts     # UI sound motifs             store.ts      # single store + undo
   styles.css   # full-height frame, rails, sheets, responsive tiers
-tests/         # 23 suites incl. inference, liveModel, music, share, wardrobe
+tests/         # 22 suites incl. inference, liveModel, music, share, wardrobe
 docs/          # integrations.md (honesty contract), screenshots/, images/
 api/           # Vercel proxy → Meta Model API (key in Vercel secret only)
 public/        # PWA manifest, icon, offline service worker

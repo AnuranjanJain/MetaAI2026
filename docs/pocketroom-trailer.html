@@ -1,0 +1,244 @@
+<title>Pocketroom Trailer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Outfit:wght@400;500;700&display=swap">
+<style>
+/* Layout concept: letterboxed cinema stage on plum dusk, control deck + script below */
+/* Design tokens */
+:root{
+  --bg:#17121d; --bg2:#221a2c; --panel:#251d33; --card:#2e2340;
+  --fg:#f7ecf3; --muted:#c9b3cd; --faint:#9a849e;
+  --accent:#ff8fab; --accent2:#ffc2d4; --gold:#ffd9a0; --mint:#a8e6c9;
+  --rail:#120d18; --screen:#0f0b14;
+  --display:"Fraunces",Georgia,"Times New Roman",serif;
+  --body:"Outfit",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#fff3f7; --bg2:#ffe4ee; --panel:#ffffff; --card:#fff0f5;
+    --fg:#43283b; --muted:#8a5f7c; --faint:#b28aa0;
+    --accent:#e34d7e; --accent2:#c2436f; --gold:#b07a1e; --mint:#1e7a52;
+    --rail:#f6dbe6; --screen:#1c1424;
+    color-scheme:light;
+  }
+}
+:root[data-theme="dark"]{ color-scheme:dark; }
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:var(--body); line-height:1.55;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-block:28px;
+}
+.wrap{max-width:1080px;margin:0 auto}
+.eyebrow{letter-spacing:.22em;text-transform:uppercase;font-size:12px;color:var(--accent);font-weight:700}
+h1{font-family:var(--display);font-size:clamp(30px,5vw,52px);line-height:1.05;margin:.3em 0 .2em;text-wrap:balance}
+h2{font-family:var(--display);font-size:clamp(21px,3vw,30px);margin:0 0 .4em;text-wrap:balance}
+.sub{color:var(--muted);max-width:65ch}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 22px}
+.pill{border:1px solid var(--accent);color:var(--accent);border-radius:999px;padding:4px 12px;font-size:13px;font-weight:600}
+.pill.solid{background:var(--accent);color:#2b0f1c;border-color:transparent}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .pill.solid{color:#fff}}
+
+/* Cinema stage */
+.stage-shell{background:var(--rail);border-radius:18px;padding:clamp(10px,2vw,22px);box-shadow:0 24px 80px rgba(0,0,0,.45)}
+.stage{
+  position:relative;aspect-ratio:16/9;max-width:100%;background:var(--screen);
+  border-radius:12px;overflow:hidden;color:#f7ecf3;
+}
+.stage::before,.stage::after{ /* letterbox bars */
+  content:"";position:absolute;left:0;right:0;height:7%;background:#000;z-index:5;
+}
+.stage::before{top:0}.stage::after{bottom:0}
+.grain{position:absolute;inset:0;z-index:4;pointer-events:none;opacity:.10;mix-blend-mode:overlay;
+  background-image:repeating-conic-gradient(rgba(255,255,255,.6) 0 .0001turn,transparent .0002turn .0004turn);}
+.scene{position:absolute;inset:7% 0;background:radial-gradient(120% 130% at 50% 110%,#4a2b52 0%,#2a1a38 45%,#140f1d 100%);display:none;padding:4% 5%;overflow:hidden}
+.scene.active{display:block;animation:sceneIn .7s ease}
+@keyframes sceneIn{from{opacity:0;transform:scale(1.03)}to{opacity:1;transform:scale(1)}}
+@media (prefers-reduced-motion: reduce){.scene.active{animation:none}.kb{animation:none!important}}
+.kicker{letter-spacing:.24em;text-transform:uppercase;font-size:clamp(9px,1.5vw,12px);color:var(--gold);font-weight:700}
+.scene h3{font-family:var(--display);font-size:clamp(20px,3.6vw,40px);margin:.25em 0 .3em;line-height:1.08}
+.scene p{font-size:clamp(11px,1.7vw,16px);color:#e9d4e2;max-width:60ch;margin:.2em 0}
+.scene .cap{position:absolute;left:5%;right:5%;bottom:4%;font-size:clamp(10px,1.6vw,15px);background:rgba(0,0,0,.62);border-radius:8px;padding:.5em .8em;color:#ffe9f2}
+.kb{position:absolute;right:-4%;top:-6%;width:56%;height:112%;opacity:.9;animation:kb 9s ease-in-out infinite alternate}
+@keyframes kb{from{transform:scale(1) translateX(0)}to{transform:scale(1.12) translateX(-3%)}}
+.badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;border-radius:6px;padding:2px 8px;margin-right:6px}
+.b-muse{background:#ff8fab;color:#2b0f1c}.b-demo{background:#ffd9a0;color:#3a2708}.b-local{background:#a8e6c9;color:#0d3325}
+.mock{position:absolute;right:5%;top:16%;width:44%;background:#fbf3f7;color:#43283b;border-radius:12px;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);font-size:clamp(9px,1.4vw,13px)}
+.mock .bar{height:8px;border-radius:99px;background:#f3c9d8;margin:6px 0}
+.mock .bar.fill{background:linear-gradient(90deg,#ff8fab,#ffb3c6)}
+.chat{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:.45em .7em;margin:.35em 0;font-size:clamp(10px,1.6vw,15px)}
+.chat.you{background:#ff8fab;color:#2b0f1c;font-weight:600}
+.vinyl{width:120px;height:120px;border-radius:50%;background:repeating-radial-gradient(circle,#111 0 3px,#2b2b2b 3px 5px);border:6px solid #ff8fab;margin-top:8px;animation:spin 4s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.vinyl{animation:none}}
+.arch{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;font-size:clamp(9px,1.4vw,12px)}
+.arch div{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:.5em;text-align:center}
+.arch b{display:block;color:var(--gold)}
+
+/* Deck */
+.deck{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0}
+.btn{font:inherit;font-weight:700;border:0;border-radius:10px;padding:10px 18px;cursor:pointer;background:var(--accent);color:#2b0f1c}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--faint)}
+.btn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px}
+.progress{flex:1 1 100%;height:10px;border-radius:99px;background:var(--card);overflow:hidden;cursor:pointer}
+.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--gold))}
+.dots{display:flex;flex-wrap:wrap;gap:6px}
+.dot{border:1px solid var(--faint);background:transparent;color:var(--muted);border-radius:99px;font-size:11px;padding:3px 9px;cursor:pointer}
+.dot.on{background:var(--accent);color:#2b0f1c;border-color:transparent;font-weight:700}
+.toggle{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;color:var(--muted)}
+.toggle label{display:flex;gap:6px;align-items:center;cursor:pointer}
+
+/* Script + cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:18px 0}
+.card{background:var(--panel);border:1px solid rgba(255,143,171,.25);border-radius:14px;padding:16px;min-width:0}
+.card h3{margin:.2em 0;font-size:17px}
+.card p,.card li{font-size:14px;color:var(--muted)}
+.card code{font-family:var(--mono);font-size:12.5px;color:var(--accent2)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid rgba(255,143,171,.25);vertical-align:top}
+th{color:var(--accent);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.script{background:var(--panel);border-radius:14px;padding:18px;margin:18px 0}
+.script ol{margin:0;padding-left:20px;display:grid;gap:10px;font-size:14px}
+.script li::marker{color:var(--accent);font-weight:700}
+.scroll-x{overflow-x:auto}
+a{color:var(--accent)}
+footer{color:var(--faint);font-size:13px;margin:26px 0 10px}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Pocketroom &middot; 3-minute cinematic demo</div>
+  <h1>A room that plans your day with you.</h1>
+  <p class="sub">Press <b>Play the 3-minute cut</b> for the full cinematic run — intro, every feature demo, tech + architecture, and outro — with on-screen captions and optional spoken narration. Then use the shot list below to record the real thing in OBS.</p>
+  <div class="meta-row">
+    <span class="pill solid">&#9654; 180 seconds</span>
+    <span class="pill">12 scenes</span>
+    <span class="pill">cinematic + live demo</span>
+    <span class="pill"><a href="https://pocketroom-six.vercel.app/" target="_blank" rel="noopener" style="color:inherit">pocketroom-six.vercel.app</a></span>
+  </div>
+
+  <div class="stage-shell">
+    <div class="stage" id="stage" aria-live="polite">
+      <div class="grain"></div>
+      <div id="sceneHost" style="position:absolute;inset:0"></div>
+    </div>
+  </div>
+
+  <div class="deck">
+    <button class="btn" id="playBtn">&#9654; Play the 3-minute cut</button>
+    <button class="btn ghost" id="prevBtn">&larr; Prev</button>
+    <button class="btn ghost" id="nextBtn">Next &rarr;</button>
+    <span class="time" id="clock">0:00 / 3:00 &middot; Scene 1/12</span>
+    <div class="progress" id="bar" role="slider" aria-label="Trailer progress" tabindex="0"><i id="fill"></i></div>
+    <div class="dots" id="dots"></div>
+  </div>
+  <div class="toggle">
+    <label><input type="checkbox" id="voiceTgl" checked> Spoken narration</label>
+    <label><input type="checkbox" id="capTgl" checked> Captions</label>
+    <label><input type="checkbox" id="autoTgl" checked> Auto-advance on timer</label>
+  </div>
+
+  <div class="grid">
+    <div class="card"><h3>&#127916; How to watch</h3><p>Best with sound. Scenes advance on the real 180-second clock, so pausing pauses the clock. Use dots to jump to any demo.</p></div>
+    <div class="card"><h3>&#127968; Live demo link</h3><p>Open the real app alongside: <a href="https://pocketroom-six.vercel.app/" target="_blank" rel="noopener">pocketroom-six.vercel.app</a> — voice needs Chrome/Edge + mic.</p></div>
+    <div class="card"><h3>&#127897; Record it for real</h3><p>Scene-by-scene voiceover + shot list is below. Record at 1080p in OBS, read the lines, cut to the app where it says <code>LIVE</code>.</p></div>
+  </div>
+
+  <h2>Full voiceover script + shot list (180s)</h2>
+  <div class="script scroll-x">
+  <table>
+    <tr><th>Time</th><th>Scene</th><th>Say (voiceover)</th><th>Show (shot)</th></tr>
+    <tr><td><code>0:00–0:15</code></td><td>Intro</td><td>What if your to-do list lived somewhere — a little room that knows your whole day? This is Pocketroom. Everything you need for today, in one little place.</td><td>CINEMATIC: slow push-in on the cozy pink room at dusk, title blooms, tagline fades up.</td></tr>
+    <tr><td><code>0:15–0:35</code></td><td>Today's Room</td><td>Your day is a room you can see. Wardrobe, desk, window, door — every object mirrors real plans. Desktop rails, a tidy phone app bar, and a late-night mode when the day runs long.</td><td>LIVE: scroll the SVG room, resize to phone width, toggle late-night mode.</td></tr>
+    <tr><td><code>0:35–0:55</code></td><td>Voice assistant</td><td>Say it, then confirm it. Dentist tomorrow at two-thirty. Remind me to buy milk. Where is my adapter? Live Muse or on-device heuristics understand — and nothing is ever saved without your tap.</td><td>LIVE: mic button, say a task, confirm card, spoken read-back, model + latency line.</td></tr>
+    <tr><td><code>0:55–1:12</code></td><td>Morning Captain</td><td>Dump the day in one box. The Morning Captain — Wonder-first, Spark fallback — proposes slots, prep, leave-by, outfit and pack list. App code verifies every plan: fixed events never move, nothing overlaps, one tap accepts, all undoable.</td><td>LIVE: paste a messy day, watch proposals, hit accept, show streak bump + I'm-late replan.</td></tr>
+    <tr><td><code>1:12–1:24</code></td><td>Desk captures</td><td>Notes and screenshots land on the desk. On-device reading is instant; Interpret with Muse goes deeper. Every proposal ends in a confirm card — confirm, archive, or discard. The box always clears.</td><td>LIVE: drop a screenshot, show extraction card, confirm into a plan.</td></tr>
+    <tr><td><code>1:24–1:36</code></td><td>Window day view</td><td>The window is your timeline. Step days, place tasks, plan leave-by buffers with honest travel math, set local reminders — and read-my-day reads it all aloud.</td><td>LIVE: prev/next day, place + done + unschedule, reminder toast, read-my-day.</td></tr>
+    <tr><td><code>1:36–1:48</code></td><td>Wardrobe</td><td>Add from photo: live Muse vision drafts the item, SAM 3.1 segments it — or hand-tag it yourself, and confirm only what you keep. Outfit picks come strictly from clothes you own.</td><td>LIVE: upload a jacket photo, segmentation mask, confirm, outfit suggestion.</td></tr>
+    <tr><td><code>1:48–1:58</code></td><td>Doorway + search</td><td>Leaving? The doorway packs by routine, with a running-late mode and a read-aloud checklist. And ask where anything is — ambiguous matches are shown, never guessed.</td><td>LIVE: pack routine, running-late toggle, search "adapter", show two matches.</td></tr>
+    <tr><td><code>1:58–2:08</code></td><td>Record player</td><td>And yes — it plays. Eight original synth loops, synthesized live in WebAudio, no files, no network — plus your uploads and named mixes on a spinning vinyl.</td><td>LIVE: tap the disk, switch loops, show a named playlist mixing uploads + loops.</td></tr>
+    <tr><td><code>2:08–2:18</code></td><td>Decorate + Share</td><td>Make it yours — walls, posters, your own art, saved on-device. Then share the day: an auto-fitting SVG poster, an optional Muse Image dream upgrade, PNG, or post to X.</td><td>LIVE: recolor wall, upload poster, generate day poster, download PNG.</td></tr>
+    <tr><td><code>2:18–2:42</code></td><td>Tech + architecture</td><td>Under the hood: Vite plus strict TypeScript, zero frameworks — DOM plus SVG, one AppState store in localStorage with a 30-step undo. Voice via Web Speech or Muse Transcribe, music in WebAudio, uploads in IndexedDB. Live calls go through Vercel serverless proxies to Muse Spark and Wonder — keys stay server-side, BYOK stays in your browser. Deterministic rules live in app code, models only propose.</td><td>DIAGRAM: browser → Vercel /api proxy → Meta Model API; store, IndexedDB, 228 tests badge.</td></tr>
+    <tr><td><code>2:42–3:00</code></td><td>Outro</td><td>Local-first, honest by design — demo heuristics wear a DEMO sticker, live results wear MUSE ON. Your data stays home; 228 tests keep it that way. Pocketroom — cozy software for hectic days. Try it live tonight.</td><td>CINEMATIC: pull-back to full room, lights warm, logo + live-demo URL + MIT badge.</td></tr>
+  </table>
+  </div>
+
+  <h2>Recording checklist</h2>
+  <div class="grid">
+    <div class="card"><h3>1 &middot; Setup</h3><p>1080p, 30fps, Chrome, mic tested. Open the app fresh + one lived-in tab. <code>npm run dev</code> or the Vercel URL.</p></div>
+    <div class="card"><h3>2 &middot; Audio</h3><p>Read the script at ~150 words/min. Optional: any cozy lo-fi bed at −20dB under voice, duck under LIVE taps.</p></div>
+    <div class="card"><h3>3 &middot; Edit beats</h3><p>Cut on the verbs: tap, confirm, accept, spin, recolor. Keep each LIVE shot 8–12s. End card holds 4s on the URL.</p></div>
+  </div>
+
+  <footer>Cozy software for hectic days. Made with love by Anuranjan Jain &middot; MIT &middot; 228 tests passing &middot; local-first.</footer>
+</div>
+
+<script>
+var SCENES=[
+ {t:"0:00 – 0:15 · INTRO",h:"A room that plans your day with you.",p:"Everything you need for today, in one little place.",cap:"What if your to-do list lived somewhere? This is Pocketroom.",d:15,art:"room"},
+ {t:"0:15 – 0:35 · TODAY'S ROOM",h:"Your day, you can see it.",p:"Hand-built SVG scene — wardrobe, desk, window, door, plant, stereo. Rails on desktop, tidy app bar on phones, late-night mode after hours.",cap:"Every object mirrors a real plan. Nothing here is decoration.",d:20,art:"room"},
+ {t:"0:35 – 0:55 · VOICE ASSISTANT",h:"Say it, then confirm it.",p:"“Dentist tomorrow at 2:30 pm” → understood via Live Muse or on-device heuristics. Hands-free, missing details asked by voice, spoken read-back.",cap:"Nothing is ever saved or completed without your tap.",d:20,art:"voice"},
+ {t:"0:55 – 1:12 · MORNING CAPTAIN",h:"Dump the day. Get a plan.",p:"Wonder-first, Spark fallback. Slots, prep, leave-by, outfit, pack list — verified in app code: fixed events never move, no overlaps, one-tap undoable accept.",cap:"Includes a demo day + “I’m late — replan from now” mode.",d:17,art:"captain"},
+ {t:"1:12 – 1:24 · DESK CAPTURES",h:"Drop it on the desk.",p:"Notes, screenshots, dictation. Instant on-device reading + “Interpret with Muse”. Confirm, archive, or discard — the box always clears.",cap:"“at 7 00 am” parses as morning. Never midnight.",d:12,art:"desk"},
+ {t:"1:24 – 1:36 · WINDOW DAY VIEW",h:"Time, through the window.",p:"Prev/next days, place · done · unschedule, leave-by buffers, local reminders, read-my-day aloud — plus overdue rescue and carry-forward.",cap:"Fixed plans stay fixed. The app enforces it.",d:12,art:"window"},
+ {t:"1:36 – 1:48 · WARDROBE",h:"Catalog clothes. Pick outfits.",p:"“Add from photo”: Muse vision drafts, SAM 3.1 segments — or hand-tag. Confirm only what you keep. Outfits come strictly from available items.",cap:"Event-aware picks. Strictly from your closet.",d:12,art:"wardrobe"},
+ {t:"1:48 – 1:58 · DOORWAY + SEARCH",h:"Grab it and go.",p:"Pack by routine with running-late mode + read-aloud list. Belongings remember their spots; “where is my adapter?” shows matches, never guesses.",cap:"Ambiguous? It shows both. Honest search.",d:10,art:"door"},
+ {t:"1:58 – 2:08 · RECORD PLAYER",h:"Oh — it plays.",p:"Eight original WebAudio synth loops. Zero files, zero network. Your uploads (200, IndexedDB) + named playlists mixing loops and you.",cap:"Tap the disk. The tonearm swings.",d:10,art:"music"},
+ {t:"2:08 – 2:18 · DECORATE + SHARE",h:"Make it yours. Share the day.",p:"Wall colors, builtin posters, your uploads — saved on-device. Then an auto-fitting SVG day poster, Muse Image dream upgrade, PNG, Post-to-X.",cap:"Headlines auto-fit. Never clip.",d:10,art:"share"},
+ {t:"2:18 – 2:42 · TECH + ARCHITECTURE",h:"Simple stack. Serious boundaries.",p:"Vite 6 + strict TS, no framework. One AppState store (localStorage) + 30-step undo. Vercel proxies → Muse Spark + Wonder; keys server-side, BYOK in-browser. 228 tests.",cap:"Models propose. App code disposes. Deterministic rules win.",d:24,art:"arch"},
+ {t:"2:42 – 3:00 · OUTRO",h:"Cozy software for hectic days.",p:"Local-first. DEMO stickers on heuristics, MUSE ON on live. Try it live tonight — pocketroom-six.vercel.app. MIT. Made with love.",cap:"Pocketroom — everything for today, in one little place.",d:18,art:"outro"}
+];
+var idx=0,elapsed=0,playing=false,timer=null,started=false;
+var host=document.getElementById('sceneHost'),fill=document.getElementById('fill'),
+    clock=document.getElementById('clock'),playBtn=document.getElementById('playBtn'),
+    dots=document.getElementById('dots'),bar=document.getElementById('bar');
+var TOTAL=SCENES.reduce(function(s,x){return s+x.d},0);
+
+function art(a){
+ if(a==="voice")return '<div class="mock"><b>&#127908; Voice assistant</b><div class="chat you">“Dentist tomorrow at 2:30 pm”</div><div class="chat">&#10003; Plan drafted · <span class="badge b-muse">MUSE ON</span><span style="opacity:.7">spark · 1.8s</span></div><div class="bar fill" style="width:92%"></div><div class="bar" style="width:64%"></div><div style="margin-top:6px">&#128266; read-back on · &#10004; confirm to save</div></div>';
+ if(a==="captain")return '<div class="mock"><b>&#129517; Morning Captain</b><div class="bar fill" style="width:88%"></div><div class="bar fill" style="width:74%"></div><div class="bar" style="width:60%"></div><div style="margin-top:6px"><span class="badge b-muse">WONDER</span> slots · prep · leave-by · outfit · pack<br><span class="badge b-local">VERIFIED</span> fixed events unmoved · no overlaps</div></div>';
+ if(a==="desk")return '<div class="mock"><b>&#128196; Desk captures</b><div class="chat">Screenshot → “Gym at 7 00 am” → 7:00 AM &#10003;</div><div class="chat you">&#10004; Confirm · &#128230; Archive · &#10005; Discard</div><div class="bar fill" style="width:70%"></div></div>';
+ if(a==="window")return '<div class="mock"><b>&#10022; Window · Tue</b><div class="bar fill" style="width:95%"></div><div class="bar fill" style="width:55%"></div><div class="bar" style="width:35%"></div><div style="margin-top:6px">&larr; Prev · Next &rarr; · &#9200; leave-by 8:40 · &#128276; remind · &#128266; read-my-day</div></div>';
+ if(a==="wardrobe")return '<div class="mock"><b>&#128087; Wardrobe</b><div class="chat">Photo → SAM 3.1 mask … jacket &#10003;</div><div class="bar fill" style="width:80%"></div><div style="margin-top:6px"><span class="badge b-muse">VISION</span> confirm only what you keep</div></div>';
+ if(a==="door")return '<div class="mock"><b>&#128682; Doorway</b><div class="chat">&#10003; keys · wallet · adapter</div><div class="chat you">“Where is my adapter?” → shelf · desk (2 matches)</div><div style="margin-top:6px">&#9200; running-late mode · &#128266; read list</div></div>';
+ if(a==="music")return '<div class="mock"><b>&#127911; Record player</b><div class="vinyl"></div><div style="margin-top:8px">rainy-synth · 3:12 · &#10084; · &#9198; &#9654; &#9197;<br>mix: uploads + loops · IndexedDB</div></div>';
+ if(a==="share")return '<div class="mock"><b>&#127912; Decorate + Share</b><div class="bar fill" style="width:90%"></div><div style="margin-top:6px">walls · posters · your art<br><span class="badge b-muse">DREAM</span> SVG poster → PNG · Post-to-X</div></div>';
+ if(a==="arch")return '<div class="arch" style="position:absolute;right:5%;top:20%;width:46%"><div><b>BROWSER</b>DOM+SVG · 1 store · undo(30)</div><div><b>VERCEL /api</b>8 proxies · key server-side</div><div><b>META API</b>Spark · Wonder · SAM · Image · Voice</div><div><b>ON-DEVICE</b>localStorage · IndexedDB</div><div><b>WEB APIS</b>Speech · WebAudio · Canvas</div><div><b>PROOF</b>228 tests · DEMO/MUSE ON</div></div>';
+ if(a==="outro")return '<div class="mock" style="text-align:center"><b>&#127968; pocketroom-six.vercel.app</b><div style="font-size:22px">♡ ♡ ♡</div><div>MIT · 228 tests · local-first</div></div>';
+ return '<svg class="kb" viewBox="0 0 300 220" aria-hidden="true"><rect x="20" y="30" width="260" height="160" rx="10" fill="#f7c9d9"/><rect x="20" y="30" width="260" height="26" rx="10" fill="#e34d7e"/><rect x="45" y="90" width="60" height="70" rx="4" fill="#8a5f7c"/><rect x="120" y="80" width="70" height="80" rx="4" fill="#ffd9a0"/><rect x="205" y="95" width="45" height="65" rx="4" fill="#a8e6c9"/><circle cx="230" cy="60" r="12" fill="#ffd166"/><rect x="60" y="120" width="20" height="14" rx="2" fill="#43283b"/></svg>';
+}
+function fmt(s){s=Math.max(0,Math.round(s));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
+function startOffset(i){var s=0;for(var k=0;k<i;k++)s+=SCENES[k].d;return s}
+function render(){
+ var sc=SCENES[idx];
+ host.innerHTML='<div class="scene active"><div class="kicker">'+sc.t+'</div><h3>'+sc.h+'</h3><p>'+sc.p+'</p>'+art(sc.art)+
+  '<div class="cap" data-cap>'+(document.getElementById('capTgl').checked?sc.cap:"")+ '</div></div>';
+ clock.textContent=fmt(elapsed)+" / 3:00 · Scene "+(idx+1)+"/"+SCENES.length;
+ fill.style.width=(100*elapsed/TOTAL)+"%";
+ var ds=dots.children;for(var i=0;i<ds.length;i++)ds[i].classList.toggle("on",i===idx);
+ if(document.getElementById('voiceTgl').checked&&playing&&"speechSynthesis"in window){
+   try{speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(sc.cap||sc.p);u.rate=1.02;speechSynthesis.speak(u);}catch(e){}
+ }
+}
+function tick(){
+ elapsed+=1;
+ var end=startOffset(idx)+SCENES[idx].d;
+ if(elapsed>=end){ if(idx<SCENES.length-1){idx++;} else {pause();elapsed=TOTAL;render();playBtn.innerHTML="&#9654; Replay the 3-minute cut";return;} }
+ if(!document.getElementById('autoTgl').checked){ /* still advance clock but hold scene */ }
+ render();
+}
+function play(){ if(elapsed>=TOTAL){elapsed=0;idx=0;} playing=true;playBtn.innerHTML="&#10074;&#10074; Pause";render();timer=setInterval(tick,1000); }
+function pause(){ playing=false;clearInterval(timer);playBtn.innerHTML="&#9654; Play the 3-minute cut";try{if("speechSynthesis"in window)speechSynthesis.cancel();}catch(e){} }
+playBtn.onclick=function(){playing?pause():play();};
+document.getElementById('prevBtn').onclick=function(){pause();idx=Math.max(0,idx-1);elapsed=startOffset(idx);render();};
+document.getElementById('nextBtn').onclick=function(){pause();idx=Math.min(SCENES.length-1,idx+1);elapsed=startOffset(idx);render();};
+document.getElementById('capTgl').onchange=render;
+document.getElementById('voiceTgl').onchange=function(){if(!this.checked){try{speechSynthesis.cancel();}catch(e){}}};
+bar.onclick=function(e){var r=bar.getBoundingClientRect();var f=(e.clientX-r.left)/r.width;elapsed=Math.floor(f*TOTAL);var acc=0;idx=0;for(var i=0;i<SCENES.length;i++){if(elapsed>=acc+SCENES[i].d){acc+=SCENES[i].d;idx=i+1;}else break;}idx=Math.min(idx,SCENES.length-1);render();};
+SCENES.forEach(function(s,i){var b=document.createElement("button");b.className="dot";b.textContent=(i+1);b.setAttribute("aria-label","Scene "+(i+1)+": "+s.h);b.onclick=function(){pause();idx=i;elapsed=startOffset(i);render();};dots.appendChild(b);});
+render();
+</script>

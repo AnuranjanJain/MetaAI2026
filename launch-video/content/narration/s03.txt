@@ -1,0 +1,1 @@
+Pocketroom listens without taking control. Say, “Dentist tomorrow at two thirty,” or drop in a note or screenshot. The app proposes what it understood, shows the path it used, and waits for your confirmation. Nothing becomes a task or event until you say yes.

@@ -1,0 +1,21 @@
+import {chromium} from 'playwright';import fs from 'node:fs/promises';import path from 'node:path';
+const out=path.join(process.cwd(),'public','live-upgrade');await fs.mkdir(out,{recursive:true});
+const browser=await chromium.launch({headless:false,channel:'chrome',args:['--hide-scrollbars','--autoplay-policy=no-user-gesture-required']});
+const contexts=browser.contexts();if(!contexts.length)throw new Error('No signed-in Chrome context available; use browser session with Meta key.');
+const ctx=contexts[0];const pages=ctx.pages();let page=pages.find(p=>p.url().startsWith('https://pocketroom-six.vercel.app/'));
+if(!page)page=await ctx.newPage();
+const trace=[];const stamp=()=>Number((Date.now()/1000).toFixed(3));
+page.on('response',r=>{if(r.url().includes('/api/')||r.url().includes('api.meta.ai'))trace.push({type:'api',url:r.url().replace(/(\/v1\/[^?]+).*/, '$1'),status:r.status(),at:stamp()});});
+const wait=ms=>page.waitForTimeout(ms);
+async function click(sel){const l=page.locator(sel).first();await l.scrollIntoViewIfNeeded();const b=await l.boundingBox();if(b)await page.mouse.move(b.x+b.width/2,b.y+b.height/2,{steps:10});await wait(240);await l.click();await wait(600);trace.push({type:'click',selector:sel,at:stamp(),box:b});}
+async function type(sel,text){const l=page.locator(sel).first();await l.scrollIntoViewIfNeeded();await l.fill('');await l.pressSequentially(text,{delay:35});trace.push({type:'input',selector:sel,text,at:stamp()});}
+async function snap(id){await page.screenshot({path:path.join(out,id+'.png')});await fs.writeFile(path.join(out,'trace-progress.json'),JSON.stringify(trace,null,2));}
+try{
+ await page.bringToFront();await page.goto('https://pocketroom-six.vercel.app/',{waitUntil:'networkidle',timeout:60000});await wait(1200);
+ await snap('live-room');
+ if(await page.locator('[data-act="keys"]').count()){await click('[data-act="keys"]');await snap('live-setup');const status=await page.locator('.sheet-body').innerText();trace.push({type:'setup',status:status.replace(/(?<=Meta key: ).*/,'[redacted]')});if(!status.includes('Meta key: saved in this browser'))throw new Error('Meta key is not saved in this Chrome context.');if(status.includes('Chat backend: Spark Open (Baseten)'))throw new Error('Switch chat backend to Meta Muse for this demo.');if(status.includes('Live: off'))await click('#keys-live');await snap('live-ready');await page.locator('.sheet-head [data-close]').first().click();await wait(500);}
+ await click('[data-area="wardrobe"]');await page.locator('#wd-photo').setInputFiles('C:/Users/anura/Downloads/wardrobe.jpg');await wait(800);await snap('wardrobe-photo');await click('#wd-detect');await page.waitForFunction(()=>!document.querySelector('#wd-detect')?.disabled,{},{timeout:90000});await wait(800);await snap('wardrobe-result');
+ const draftText=await page.locator('.sheet-body').innerText();const drafts=await page.locator('[data-df="name"]').evaluateAll(es=>es.map(e=>e.value).filter(Boolean));trace.push({type:'wardrobe-result',draftCount:drafts.length,names:drafts,visibleStatus:draftText.match(/Detected \d+ pieces?/)?.[0]??null});if(!drafts.length)throw new Error('Live wardrobe request returned no draft pieces.');
+ await click('#wd-draft-save');await snap('wardrobe-saved');
+ await click('.sheet-head [data-close]');await click('[data-area="timeline"]');await type('#cap-dump','Plan a 30 minute launch review, pack my laptop, and prepare for the afternoon meeting.');await click('#cap-go');await page.waitForFunction(()=>!document.querySelector('#cap-go')?.disabled,{},{timeout:100000});await wait(700);await snap('captain-result');const resultText=await page.locator('.sheet-body').innerText();trace.push({type:'captain-result',text:resultText.slice(-2200)});if(!await page.locator('#cap-accept:enabled').count())throw new Error('Captain did not return an accept-ready live proposal.');await click('#cap-accept');await snap('captain-accepted');
+}catch(e){trace.push({type:'error',message:String(e)});await snap('error');console.error(e);process.exitCode=1;}finally{await fs.writeFile(path.join(out,'trace.json'),JSON.stringify(trace,null,2));await browser.close();console.log('TRACE',JSON.stringify(trace.filter(e=>e.type==='api'||e.type==='wardrobe-result'||e.type==='captain-result'||e.type==='error')));}

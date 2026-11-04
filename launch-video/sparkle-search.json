@@ -1,0 +1,60 @@
+{
+  "provider": "freesound",
+  "query": "soft sparkle chime",
+  "license_policy": "cc0",
+  "ordering": "relevance; popularity is supporting evidence only",
+  "results": [
+    {
+      "id": "fs:876010",
+      "title": "Starry_UI_Click_63",
+      "author": "SignatureSoundsOrg",
+      "duration_seconds": 1.0,
+      "preview_url": "https://cdn.freesound.org/previews/876/876010_19205925-hq.mp3",
+      "downloads": 19,
+      "page_url": "https://freesound.org/people/SignatureSoundsOrg/sounds/876010/",
+      "license_label": "Creative Commons 0",
+      "description": "Unused sound effect from a project",
+      "rating": null,
+      "rating_count": null
+    },
+    {
+      "id": "fs:876009",
+      "title": "Starry_UI_Click_62",
+      "author": "SignatureSoundsOrg",
+      "duration_seconds": 1.0,
+      "preview_url": "https://cdn.freesound.org/previews/876/876009_19205925-hq.mp3",
+      "downloads": 14,
+      "page_url": "https://freesound.org/people/SignatureSoundsOrg/sounds/876009/",
+      "license_label": "Creative Commons 0",
+      "description": "Unused sound effect from a project",
+      "rating": null,
+      "rating_count": null
+    },
+    {
+      "id": "fs:876011",
+      "title": "Starry_UI_Click_64",
+      "author": "SignatureSoundsOrg",
+      "duration_seconds": 1.0,
+      "preview_url": "https://cdn.freesound.org/previews/876/876011_19205925-hq.mp3",
+      "downloads": 33,
+      "page_url": "https://freesound.org/people/SignatureSoundsOrg/sounds/876011/",
+      "license_label": "Creative Commons 0",
+      "description": "Unused sound effect from a project",
+      "rating": null,
+      "rating_count": null
+    },
+    {
+      "id": "fs:876012",
+      "title": "Starry_UI_Click_65",
+      "author": "SignatureSoundsOrg",
+      "duration_seconds": 1.0,
+      "preview_url": "https://cdn.freesound.org/previews/876/876012_19205925-hq.mp3",
+      "downloads": 20,
+      "page_url": "https://freesound.org/people/SignatureSoundsOrg/sounds/876012/",
+      "license_label": "Creative Commons 0",
+      "description": "Unused sound effect from a project",
+      "rating": null,
+      "rating_count": null
+    }
+  ]
+}

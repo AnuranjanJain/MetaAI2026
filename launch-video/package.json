@@ -1,0 +1,29 @@
+{
+  "name": "pocketroom-launch-video",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "capture": "node scripts/capture-live.mjs",
+    "render": "remotion render src/index.tsx PocketroomLaunch out/pocketroom-launch.mp4",
+    "render-no-bgm": "remotion render src/index.tsx PocketroomLaunch out/pocketroom-launch-no-bgm.mp4 --props=props-no-bgm.json",
+    "render-raw": "remotion render src/index.tsx PocketroomRawFilm out/pocketroom-launch-final.mp4",
+    "render-raw-no-bgm": "remotion render src/index.tsx PocketroomRawFilm out/pocketroom-launch-final-no-bgm.mp4 --props=props-no-bgm.json",
+    "still": "remotion still src/index.tsx PocketroomLaunch out/qa/frame.png --frame=0",
+    "still-raw": "remotion still src/index.tsx PocketroomRawFilm out/qa/raw-frame.png --frame=0",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.75.0",
+    "@remotion/cli": "4.0.484",
+    "playwright": "1.56.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "remotion": "4.0.484"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "typescript": "6.0.3"
+  }
+}

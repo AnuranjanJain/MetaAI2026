@@ -1,0 +1,1 @@
+When the day changes, Morning Captain can turn a simple list into a plan. Fixed events stay fixed. Tasks get honest time, preparation, and leave-by buffers. The app checks for overlaps before anything is accepted, and every change is one undoable decision.

@@ -128,7 +128,7 @@ No Fireworks/Modal in the submission path — Meta APIs only.
 
 ```bash
 npm install
-npm test     # 212 tests across assistant / planner / captain / wonder / sam / transcribe / dream / share / …
+npm test     # 228 tests across assistant / planner / captain / wonder / sam / transcribe / dream / share / …
 npm run build
 npm run dev  # http://127.0.0.1:5173 — mic works (secure context)
 ```
@@ -153,7 +153,7 @@ verification. `dist/` contains no API keys (proxy key lives only in Vercel).
 - 1:40–2:20 wardrobe Detect (Spark vision) + Segment (SAM 3.1 masks) + Dream poster (Muse Image) +
   share PNG download + Post to X.
 - 2:20–3:00 under the hood: `api/captain.ts` + `verifyCaptainPlan`, Network
-  tab `api.meta.ai`, Vercel env (key name only), `npm test` 212 green.
+  tab `api.meta.ai`, Vercel env (key name only), `npm test` 228 green.
 
 ## X cut (15–25s, record in the same session, post before Nov 8 EOD)
 
@@ -164,23 +164,23 @@ dream poster + share card flash (16–21s); punchline card: "Pocketroom —
 today, in one little place. Built with Muse." (21–25s). Caption: the
 share text from the app's Share card + demo link + #BuildForYourWorld.
 
-Video link: <!-- TODO: paste 3-min demo URL before submitting Nov 4 9pm ET -->
-Live product: <!-- TODO: paste public Pages/Vercel URL -->
+Video link: https://youtu.be/LaiRvqQhgWE
+Live product: https://pocketroom-six.vercel.app/
 Repo: public, MIT. Everyone who worked on the project is listed on the
 submission page.
 
 ## Pre-submit checklist (owner: you, ~20 min)
 
-- [ ] Vercel: deploy the proxy (`vercel --prod` in this repo, or connect git)
-  and set the server secret `MUSE_API_KEY` in the Vercel dashboard. Routes:
+- [x] Vercel: proxy deployed (`vercel --prod`, redeploys from `main`) with
+  server secret `MUSE_API_KEY` in the Vercel dashboard. Routes:
   `/api/interpret`, `/api/tag-photo`, `/api/captain`, `/api/wonder-captain`,
-  `/api/sam-segment`, `/api/transcribe`, `/api/dream`, `/api/propose`. Key name only in screenshots — never the value.
-- [ ] GitHub: set repo secret `VITE_MUSE_PROXY_URL` to
-  `https://<your-vercel-app>.vercel.app/api/interpret` (sibling routes derive
-  automatically), push to `main`, confirm the Pages build is green.
-- [ ] Open the public Pages URL in a private window: topbar shows the Live
-  Muse chip (not the offline fallback), demo day → Captain → Accept works
+  `/api/sam-segment`, `/api/transcribe`, `/api/dream`, `/api/propose`.
+  Key name only in screenshots — never the value.
+- [x] Push to `main` and confirm the Vercel build is green at
+  https://pocketroom-six.vercel.app/ (the live product for judges).
+- [x] Open the live URL in a private window: topbar shows the Live Muse
+  chip (not the offline fallback), demo day → Captain → Accept works
   typing-only, share PNG downloads.
-- [ ] Record the 3-min video per the script above, paste its URL + the live
+- [x] Record the 3-min video per the script above, paste its URL + the live
   product URL at the top of this file, submit one entry, then post the demo
   on X before Nov 8 EOD for Most Viral.

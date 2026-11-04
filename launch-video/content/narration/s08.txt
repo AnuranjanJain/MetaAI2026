@@ -1,0 +1,1 @@
+Under the room is a simple system. The browser owns one app state, with local storage for the day and IndexedDB for media. Deterministic rules protect schedules, confirmations, and item links. When Live Muse is on, a Vercel proxy can route selected requests to Meta models. If that path is unavailable, Pocketroom falls back visibly to on-device logic.
